@@ -2,6 +2,7 @@
 
 #include <map>
 #include <set>
+#include <optional>
 
 namespace TestTask
 {
@@ -13,12 +14,15 @@ namespace TestTask
     class SegmentSystem
     {
         public:
-            void AddSegment(const std::pair<size_t, size_t>&);
+            void AddSegment(std::pair<uint64_t, uint64_t>&);
 
-            std::vector<std::pair<size_t, size_t>> GetSegments(uint64_t);
+            void RemoveSegment(const std::pair<uint64_t, uint64_t>&);
+
+            std::optional<std::pair<uint64_t, uint64_t>>> GetSegment(uint64_t);
 
         private:
-            std::map<size_t, std::vector<std::pair<size_t, size_t>>> size_mappings_;
-            std::set<std::pair<size_t, size_t>> segments_;
+            std::map<uint64_t, std::set<std::pair<uint64_t, uint64_t>>> size_mappings_;
+            std::map<uint64_t, uint64_t> left_sides_;
+            std::map<uint64_t, uint64_t> right_sides_;
     }   
 }

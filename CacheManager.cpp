@@ -2,6 +2,19 @@
 
 using namespace TestTask::Cache;
 
+bool compare_with_epoch(uint64_t left, uint64_t right)
+{
+    auto current = Detail::CURRENT_EPOCH.load(std::memory_order_acquire);
+    if (current == 0)
+    {
+        return (left ^ (1ull << 63)) < (right ^ (1ull << 63));
+    }
+    else
+    {
+        return left < right;
+    }
+}
+
 CacheManager::CacheManager(size_t max_capacity,
 Concurrency::Guard<std::unordered_map<std::string, File*>> guarded_fileset_ref)
     :
@@ -18,6 +31,12 @@ ssize_t CacheManager::Read(File* f, char* buff, size_t len)
     {
         cache.data_->copy(buff, len);
         f->last_time_read_ = usage_counter_.fetch_add(1. std::memory_order_acq_rel);
+
+        if ((f->last_time_read_ >> 63) != Detail::CURRENT_EPOCH.load(std::memory_order_acquire))
+        {
+            Detail::CURRENT_EPOCH.fetch_xor(1, std::memory_order_release);
+        }
+
         buff[len] = 0;
         return len;
     }
@@ -57,13 +76,15 @@ void CacheManager::InvalidateCache(CacheWorker worker)
             std::unique_lock l(worker.mutex_);
             worker.if_clean_.wait();
         }
-        std::map<uint64_t, File*> cache_freshness;
-        Concurrency::ReadGuard g(worker.guarded_fileset_ref_);
-        const auto& fileset = g.get();
-        for (const auto& name_file : fileset)
+        std::map<uint64_t, File*, compare_with_epoch> cache_freshness;
         {
-            auto last_time_read = name_file.second->last_time_read_.load(std::memory_order_acquire); 
-            cache_freshness_[last_time_read] = name_file.second;
+            Concurrency::ReadGuard g(worker.guarded_fileset_ref_);
+            const auto& fileset = g.get();
+            for (const auto& name_file : fileset)
+            {
+                auto last_time_read = name_file.second->last_time_read_.load(std::memory_order_acquire); 
+                cache_freshness_[last_time_read] = name_file.second;
+            }
         }
         for (auto& freshness_file : cache_freshness)
         {

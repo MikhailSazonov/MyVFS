@@ -21,18 +21,20 @@ namespace TestTask::Concurrency::Detail {
 }
 
 namespace TestTask::Concurrency {
-    class RWTicketLock {
+    class RWTicketLock
+    {
         public:
-            Token AcquireRead();
+            void AcquireRead();
 
-            Token AcquireWrite();
+            void AcquireWrite();
 
-            void Relase(const Detail::Token&);
+            void Release();
 
         private:
-            std::atomic<uint32_t> current_state_{0};
+            // Флаг нужен только чтобы определить тип владения в Release()
+            std::atomic<Detail::State> current_state_{Detail::State::READ};
             std::atomic<uint32_t> acquire_{0};
             std::atomic<uint32_t> enter_{0};
             std::atomic<uint32_t> left_{0};
-    }
+    };
 }

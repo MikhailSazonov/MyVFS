@@ -14,7 +14,7 @@ namespace TestTask::Cache
 {
     namespace Detail
     {
-        uint8_t CURRENT_EPOCH = 0;
+        std::atomic<uint8_t> CURRENT_EPOCH = 0;
     }
 
     struct CacheData

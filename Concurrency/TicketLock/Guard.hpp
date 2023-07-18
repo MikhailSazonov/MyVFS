@@ -14,7 +14,7 @@ namespace TestTask::Concurrency
         public:
             template <typename ...Args>
             Guard(Args&&... args)
-                : object_(std::forward(args)...)
+                : object_(std::forward<Args>(args)...)
             {}
 
             const T& ReadAccess() {
@@ -34,7 +34,7 @@ namespace TestTask::Concurrency
         private:
             T object_;
             RWTicketLock lock_;
-    }
+    };
 
     template <typename T>
     class WriteGuard
