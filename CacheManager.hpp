@@ -2,19 +2,20 @@
 
 #include "File.hpp"
 
-#include "Concurrency/Guard.hpp"
+#include "Concurrency/TicketLock/Guard.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <thread>
 #include <mutex>
+#include <map>
 #include <condition_variable>
 
 namespace TestTask::Cache
 {
     namespace Detail
     {
-        std::atomic<uint8_t> CURRENT_EPOCH = 0;
+        extern std::atomic<uint8_t> CURRENT_EPOCH;
     }
 
     struct CacheData
@@ -43,16 +44,22 @@ namespace TestTask::Cache
 
     struct CacheWorker
     {
-        std::thread worker_;
-        Concurrency::Guard<std::unordered_map<std::string, File*>> guarded_fileset_ref_;
+        CacheWorker(Concurrency::Guard<std::unordered_map<std::string, File*>>& guarded_fileset_ref)
+            : guarded_fileset_ref_(guarded_fileset_ref) {}
+
+        Concurrency::Guard<std::unordered_map<std::string, File*>>& guarded_fileset_ref_;
+        std::optional<std::thread> worker_;
         std::mutex mutex_;
         std::condition_variable if_clean_;
-    }
+        bool stop_{false};
+    };
 
     class CacheManager
     {
         public:
-            CacheManager(size_t, Concurrency::Guard<std::unordered_map<std::string, File*>>&);
+            CacheManager(size_t, double, Concurrency::Guard<std::unordered_map<std::string, File*>>&);
+
+            ~CacheManager();
 
             void Write(File*, const char*, size_t);
 
@@ -60,6 +67,8 @@ namespace TestTask::Cache
 
         private:
             void InvalidateCache(CacheWorker&);
+
+            void IncreaseCounter(File*);
         
         private:
             std::atomic<uint64_t> usage_counter_{0};
@@ -69,5 +78,5 @@ namespace TestTask::Cache
             const double stop_cleaning_threshold_;
 
             CacheWorker worker_;
-    }
+    };
 }

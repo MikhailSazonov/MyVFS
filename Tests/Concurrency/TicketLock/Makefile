@@ -13,8 +13,6 @@ $(NAME): $(SRC)
 
 all: $(NAME)
 
-.PHONY: test clean re
-
 test: all ./test
 
 clean:
@@ -24,3 +22,5 @@ fclean: clean
 	rm -f $(NAME)
 
 re: fclean all
+
+.PHONY: all test clean re

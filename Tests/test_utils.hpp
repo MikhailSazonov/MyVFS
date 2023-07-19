@@ -3,7 +3,7 @@
 #include <string>
 
 void success(const std::string& section) {
-    std::cout << "Section '" << section << "' passed successfully!\n===========\n";
+    std::cout << "Test '" << section << "' passed successfully!\n===========\n";
 }
 
 void test(auto f, const std::string& test_name) {

@@ -2,8 +2,11 @@
 
 #include <atomic>
 #include <optional>
+#include <vector>
 
 #include "Concurrency/TicketLock/Guard.hpp"
+
+#include "CacheManagerFwd.hpp"
 
 namespace TestTask
 {
@@ -22,7 +25,7 @@ namespace TestTask
     struct CachedInfo
     {
         std::optional<std::string> data_{std::nullopt};
-    }
+    };
 
     /*
         Не реализуем потокобезопасную запись в файл, чтобы не тратить ресурсы
@@ -31,15 +34,18 @@ namespace TestTask
     class File
     {
         friend class MyVFS;
-        File();
+        friend class TestGenerator;
+        friend class Cache::CacheManager;
 
-        enum class Mode : uint32_t {
+        File() {}
+
+        enum class Mode : uint8_t {
             CLOSED = 0, READONLY = 1, WRITEONLY = 2
         };
 
         // ?
         const char *filename_;
-        std::atomic<uint8_t> mode_{Mode::CLOSED};
+        std::atomic<Mode> mode_{Mode::CLOSED};
 
         Concurrency::Guard<CachedInfo> guarded_cache_;
         std::atomic<uint64_t> last_time_read_{0};
