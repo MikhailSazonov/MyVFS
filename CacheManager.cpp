@@ -2,6 +2,7 @@
 
 using namespace TestTask::Cache;
 using namespace TestTask::Concurrency;
+using namespace std::chrono_literals;
 
 #include <iostream>
 
@@ -24,10 +25,7 @@ Guard<std::unordered_map<std::string, File*>>& guarded_fileset_ref)
 
 CacheManager::~CacheManager()
 {
-    std::unique_lock l(worker_.mutex_);
-    worker_.stop_ = true;
-    worker_.if_clean_.notify_one();
-    l.unlock();
+    worker_.stop_.store(true, std::memory_order_release);
     worker_.worker_->join();
 }
 
@@ -77,41 +75,25 @@ void CacheManager::Write(File* f, const char* buff, size_t len)
         std::copy(buff, buff + len, std::back_inserter(*cache.data_));
     }
     
-    
-    {
-        std::unique_lock l(worker_.mutex_);
-        if (busy_capacity_.fetch_add(len, std::memory_order_acq_rel) >= max_capacity_ - len) {
-            worker_.if_clean_.notify_one();
-        }
-    }
+    busy_capacity_.fetch_add(len, std::memory_order_release);
 }
 
 void CacheManager::InvalidateCache(CacheWorker& worker)
 {
     while (true)
     {
+        while (busy_capacity_.load(std::memory_order_acquire) < max_capacity_ && !worker.stop_.load(std::memory_order_acquire))
         {
-            std::unique_lock l(worker.mutex_);
-            while (busy_capacity_.load(std::memory_order_acquire) < max_capacity_ && !worker.stop_)
-            {
-                worker.if_clean_.wait(l);
-            }
-            if (worker.stop_)
-            {
-                return;
-            }
+            std::this_thread::sleep_for(250ms);
+        }
+        if (worker.stop_.load(std::memory_order_acquire))
+        {
+            return;
         }
 
         uint8_t current_epoch;
         bool epoch_changed = false;
 
-
-        /*
-            Избегаем случая, когда эпоха меняется
-            во время поиска наиболее старого кэша.
-            Цикл должен почти всегда выполняться 1,
-            максимум 2 раза
-        */
         auto epoch_compare = [](uint64_t left, uint64_t right)
         {
             uint8_t epoch = Detail::CURRENT_EPOCH.load(std::memory_order_acquire);
@@ -125,6 +107,15 @@ void CacheManager::InvalidateCache(CacheWorker& worker)
             }
         };
         std::map<uint64_t, File*, decltype(epoch_compare)> cache_freshness;
+
+
+        /*
+            Избегаем случая, когда эпоха меняется
+            во время заполнения std::map.
+            Цикл должен почти всегда выполняться 1,
+            максимум 2 раза
+        */
+
         while (true)
         {
             current_epoch = Detail::CURRENT_EPOCH.load(std::memory_order_acquire);

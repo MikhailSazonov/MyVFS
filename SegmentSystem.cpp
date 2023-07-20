@@ -1,20 +1,20 @@
 #include "SegmentSystem.hpp"
 
-void TestTask::SegmentSystem::NormalizeSegment(std::pair<uint64_t, uint64_t>& segment)
+void TestTask::SegmentSystem::NormalizeSegment(Segment& segment)
 {
-    if (segment.second < segment.first)
+    if (segment.points_.second < segment.points_.first)
     {
-        std::swap(segment.second, segment.first);
+        std::swap(segment.points_.second, segment.points_.first);
     }
 }
 
-uint64_t TestTask::SegmentSystem::GetSize(const std::pair<uint64_t, uint64_t>& segment)
+uint64_t TestTask::SegmentSystem::GetSize(const Segment& segment)
 {
-    return segment.second - segment.first + 1;
+    return segment.points_.second - segment.points_.first + 1;
 }
 
 
-void TestTask::SegmentSystem::AddSegment(std::pair<uint64_t, uint64_t> new_segment)
+void TestTask::SegmentSystem::AddSegment(Segment&& new_segment)
 {
     NormalizeSegment(new_segment);
     uint64_t segment_size = GetSize(new_segment);
@@ -24,61 +24,70 @@ void TestTask::SegmentSystem::AddSegment(std::pair<uint64_t, uint64_t> new_segme
         return;
     }
     // Присоединяем сегменты справа
-    auto left_addition = left_sides_.find(new_segment.second + 1); 
+    auto left_addition = left_sides_.find(new_segment.points_.second + 1); 
     if (left_addition != left_sides_.end())
     {
-        new_segment.second = left_addition->second;
-        uint64_t old_size = GetSize(*left_addition);
-        size_mappings_[old_size].erase(*left_addition);
+        new_segment.points_.second = left_addition->second;
+        uint64_t old_size = left_addition->second - left_addition->first + 1;
+
+        auto segment_iter = size_mappings_[old_size].find({{left_addition->first, left_addition->second}});
+        new_segment.data_ += segment_iter->data_;
+        std::copy(segment_iter->files_.begin(), segment_iter->files_.end(), std::back_inserter(new_segment.files_));
+
+        size_mappings_[old_size].erase(segment_iter);
     }
     // Слева
-    auto right_addition = right_sides_.find(new_segment.first - 1); 
+    auto right_addition = right_sides_.find(new_segment.points_.first - 1); 
     if (right_addition != right_sides_.end())
     {
-        std::pair<uint64_t, uint64_t> right = *right_addition;
-        NormalizeSegment(right);
-        new_segment.first = right.first;
-        uint64_t old_size = GetSize(right);
-        size_mappings_[old_size].erase(right);
+        new_segment.points_.first = right_addition->second;
+        uint64_t old_size = right_addition->first - right_addition->second + 1;
+
+        auto segment_iter = size_mappings_[old_size].find({{right_addition->second, right_addition->first}});
+        new_segment.data_ = segment_iter->data_ + new_segment.data_;
+        std::copy(segment_iter->files_.begin(), segment_iter->files_.end(), std::back_inserter(new_segment.files_));
+
+        size_mappings_[old_size].erase(segment_iter);
     }
 
     uint64_t total_size = GetSize(new_segment);
-    left_sides_[new_segment.first] = new_segment.second;
-    right_sides_[new_segment.second] = new_segment.first;
+    left_sides_[new_segment.points_.first] = new_segment.points_.second;
+    right_sides_[new_segment.points_.second] = new_segment.points_.first;
     size_mappings_[total_size].insert(new_segment);
 }
 
-void TestTask::SegmentSystem::RemoveSegment(std::pair<uint64_t, uint64_t> segment_to_rm)
+void TestTask::SegmentSystem::RemoveSegment(Segment&& segment_to_rm)
 {
     NormalizeSegment(segment_to_rm);
-    auto left_segment_side = left_sides_.find(segment_to_rm.first);
+    auto left_segment_side = left_sides_.find(segment_to_rm.points_.first);
     if (left_segment_side == left_sides_.end())
     {
         return;
     }
     uint64_t left_side = left_segment_side->first;
     uint64_t right_side = left_segment_side->second;
-    uint64_t size = GetSize({left_side, right_side});
+    Segment big_seg{{left_side, right_side}};
 
-    size_mappings_[size].erase({left_side, right_side});
+    uint64_t size = GetSize(big_seg);
+
+    size_mappings_[size].erase(big_seg);
 
     left_sides_.erase(left_side);
-    if (right_side == segment_to_rm.second)
+    if (right_side == segment_to_rm.points_.second)
     {
         right_sides_.erase(right_side);
     }
     else
     {
-        std::pair<uint64_t, uint64_t> new_segment =
-            std::make_pair<uint64_t, uint64_t>(segment_to_rm.second + 1, std::move(right_side));
+        Segment new_segment{{segment_to_rm.points_.second + 1, right_side}};
         auto sz = GetSize(new_segment);
-        left_sides_[new_segment.first] = new_segment.second;
-        right_sides_[new_segment.second] = new_segment.first;
+        left_sides_[new_segment.points_.first] = new_segment.points_.second;
+        right_sides_[new_segment.points_.second] = new_segment.points_.first;
         size_mappings_[sz].insert(new_segment);
     }
 }
 
-std::optional<std::pair<uint64_t, uint64_t>> TestTask::SegmentSystem::GetSegment(uint64_t size)
+std::optional<TestTask::Segment> TestTask::SegmentSystem::GetSegmentBySize(uint64_t size)
 {
     auto segment_iter = size_mappings_[size].begin();
     if (segment_iter == size_mappings_[size].end())
@@ -86,4 +95,10 @@ std::optional<std::pair<uint64_t, uint64_t>> TestTask::SegmentSystem::GetSegment
         return std::nullopt;
     }
     return *segment_iter;
+}
+
+const TestTask::Segment& GetSegmentByPoints(uint64_t left, uint64_t right)
+{
+    uint64_t size = right - left + 1;
+    return *size_mappings_[size].find(left);
 }

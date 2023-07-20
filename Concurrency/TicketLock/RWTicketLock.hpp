@@ -3,6 +3,7 @@
 #include "Spin.hpp"
 
 #include <atomic>
+#include <thread>
 
 /*
     Мы можем использовать shared_mutex + shared_lock + unique_lock из STL,
@@ -21,6 +22,8 @@ namespace TestTask::Concurrency::Detail {
 }
 
 namespace TestTask::Concurrency {
+    void SpinThenYield(uint32_t&);
+
     class RWTicketLock
     {
         public:

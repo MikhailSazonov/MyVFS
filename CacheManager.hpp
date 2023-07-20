@@ -10,6 +10,7 @@
 #include <mutex>
 #include <map>
 #include <condition_variable>
+#include <chrono>
 
 namespace TestTask::Cache
 {
@@ -49,9 +50,7 @@ namespace TestTask::Cache
 
         Concurrency::Guard<std::unordered_map<std::string, File*>>& guarded_fileset_ref_;
         std::optional<std::thread> worker_;
-        std::mutex mutex_;
-        std::condition_variable if_clean_;
-        bool stop_{false};
+        std::atomic<bool> stop_{false};
     };
 
     class CacheManager

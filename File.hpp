@@ -3,23 +3,18 @@
 #include <atomic>
 #include <optional>
 #include <vector>
+#include <set>
 
 #include "Concurrency/TicketLock/Guard.hpp"
 
-#include "CacheManagerFwd.hpp"
+#include "ManagersFwd.hpp"
 
 namespace TestTask
 {
-    struct ChunkInfo
-    {
-        size_t size_;
-        size_t offset_;
-    };
-
     struct PhysicalLocation
     {
-        const char* real_filename_;
-        std::vector<ChunkInfo> chunks_info_;
+        /* Информация о чанках в формате: начало чанка, конец чанка */
+        std::set<std::pair<uint64_t, uint64_t>> chunks_info_;
     };
 
     struct CachedInfo
@@ -35,6 +30,7 @@ namespace TestTask
     {
         friend class MyVFS;
         friend class TestGenerator;
+        friend class FileManager;
         friend class Cache::CacheManager;
 
         File() {}

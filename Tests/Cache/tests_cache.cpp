@@ -63,7 +63,7 @@ int main() {
         cache.Write(um["ac"], buf, 5);
         cache.Write(um["ad"], buf, 5);
 
-        std::this_thread::sleep_for(100ms);
+        std::this_thread::sleep_for(500ms);
 
         rd = cache.Read(um["ab"], ans, 100);
         assert_equal(rd, -1);
@@ -122,7 +122,7 @@ int main() {
 
     }, "Massive writes");
 
-        test([&]() {
+    test([&]() {
         Guard<std::unordered_map<std::string, File*>> g;
         CacheManager cache(60, 0.75, g);
         auto& um = g.WriteAccess();
@@ -139,7 +139,7 @@ int main() {
         for (int i = 0; i < 10; ++i)
         {
             tp.Submit([&](){
-                for (size_t j = 0; j < 4000; ++j)
+                for (size_t j = 0; j < 100000; ++j)
                 {
                     int rand_idx = random() % 5;
                     std::string a = "a";
