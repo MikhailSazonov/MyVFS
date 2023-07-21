@@ -26,6 +26,7 @@ int main() {
     test([&]() {
         ThreadPool tp(5);
         TestTask::Journal j;
+        tp.Start();
 
         for (int i = 0; i < 5; ++i)
         {
@@ -51,6 +52,7 @@ int main() {
             ++cnt;
         }
 
+        tp.WaitIdle();
         tp.Stop();
     }, "Submits");
 }

@@ -26,7 +26,7 @@ namespace TestTask
     struct PhysicalFile
     {
         std::FILE* f_;
-        size_t file_size_;
+        size_t file_size_{0};
         SegmentSystem free_segments_;
     };
 

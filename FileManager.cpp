@@ -7,7 +7,9 @@ const std::string& worker_id,
 std::optional<size_t> max_tasks_per_one)
     : cache_(cache), max_tasks_per_once_(max_tasks_per_one)
     {
-        if (!(phys_file_.f_ = fopen(std::string("/" + worker_id).c_str(), "a+")))
+        std::string storage_name = "./" + worker_id;
+        phys_file_.f_ = fopen(storage_name.c_str(), "r+");
+        if (!phys_file_.f_ && !(phys_file_.f_ = fopen(storage_name.c_str(), "w+")))
         {
             std::cerr << std::strerror(errno) << '\n';
             throw OpenStorageError();
@@ -26,25 +28,14 @@ FileManager::~FileManager()
 
 size_t FileManager::Read(File* f, char* buf, size_t len)
 {
-    Task new_task;
-    new_task.f_ = f;
-    new_task.type_ = TaskType::READ;
-    new_task.buf_ = buf;
-    new_task.len_ = len;
-    tasks_journal_.AddTask(&new_task);
-    std::cout << "added\n";
-    return tasks_journal_.WaitForTask(&new_task);
+    Task* new_task = tasks_journal_.AddTask(f, TaskType::READ, buf, len);
+    return tasks_journal_.WaitForTask(new_task);
 }
 
 size_t FileManager::Write(File* f, const char* buf, size_t len)
 {
-    Task new_task;
-    new_task.f_ = f;
-    new_task.type_ = TaskType::WRITE;
-    new_task.buf_ = buf;
-    new_task.len_ = len;
-    tasks_journal_.AddTask(&new_task);
-    return tasks_journal_.WaitForTask(&new_task);
+    Task* new_task = tasks_journal_.AddTask(f, TaskType::WRITE, buf, len);
+    return tasks_journal_.WaitForTask(new_task);
 }
 
 void FileManager::ProcessTasks()
@@ -52,17 +43,13 @@ void FileManager::ProcessTasks()
     while (!quit_.load(std::memory_order_acquire))
     {
         TasksGroup tasks_group_;
-        size_t i = 0;
-        std::cout << "I BEFORE: " << i << '\n';
-        for (; !max_tasks_per_once_.has_value() || i < *max_tasks_per_once_; ++i)
+        for (size_t i = 0; !max_tasks_per_once_.has_value() || i < *max_tasks_per_once_; ++i)
         {
-            Concurrency::Node<Task>* next_task = tasks_journal_.ExtractTask();
-            // std::cout << next_task << '\n';
-            if (!next_task)
+            Task* task = tasks_journal_.ExtractTask();
+            if (!task)
             {
                 break;
             }
-            auto& task = next_task->data_;
             switch (task->type_)
             {
                 case TaskType::READ:
@@ -72,7 +59,8 @@ void FileManager::ProcessTasks()
                         Если же нет, то нужно прочитать данные с диска (за данный файл отвечает этот
                         поток => другим путём данные в кэше не появятся)
                     */
-                    if (cache_.Read(task->f_, std::get<char*>(task->buf_), task->len_) >= 0)
+                    if (task->f_->location_.chunks_info_.empty() ||
+                    cache_.Read(task->f_, std::get<char*>(task->buf_), task->len_) >= 0)
                     {
                         tasks_journal_.MarkDone(&*task);
                         continue;
@@ -81,13 +69,20 @@ void FileManager::ProcessTasks()
                     break;
                 case TaskType::WRITE:
                     freeStorage(task->f_);
-                    findStorageForData(&*task, task->len_, tasks_group_, std::get<const char*>(task->buf_));
+                    if (task->len_ > 0)
+                    {
+                        findStorageForData(&*task, task->len_, tasks_group_, std::get<const char*>(task->buf_));
+                    }
+                    else
+                    {
+                        tasks_journal_.MarkDone(&*task);
+                        continue;
+                    }
                     break;
             }
             tasks_group_.tasks_.push_back(&*task);
         }
-        std::cout << "I AFTER: " <<i << '\n';
-        if (i == 0)
+        if (tasks_group_.tasks_.empty())
         {
             Concurrency::Spin();
             continue;
@@ -110,6 +105,7 @@ void FileManager::freeStorage(File* f)
     {
         phys_file_.free_segments_.AddSegment({segment});
     }
+    f->location_.chunks_info_.clear();
 }
 
 void FileManager::addWriteSegment(Task* task, TasksGroup& tg, const char* buf,
@@ -119,7 +115,7 @@ const std::pair<uint64_t, uint64_t>& copy_idxs)
     phys_file_.free_segments_.RemoveSegment({seg});
     task->f_->location_.chunks_info_.insert(seg);
     Segment new_seg{seg, std::string(buf + copy_idxs.first,
-    copy_idxs.second - copy_idxs.first + 1), {task}};
+    copy_idxs.second - copy_idxs.first), {task}};
     tg.to_write_.AddSegment(std::move(new_seg));
 }
 
@@ -165,16 +161,16 @@ void FileManager::findStorageForData(Task* task, size_t size, TasksGroup& tg, co
     {
         uint64_t rest = size - total_len;
         addWriteSegment(task, tg, buf, {phys_file_.file_size_, phys_file_.file_size_ + rest - 1}, {total_len, size});
+        phys_file_.file_size_ += rest;
     }
 }
 
 void FileManager::ExecuteTasks(const TasksGroup& tg)
 {
-    std::cout << "EXEC\n";
-
     /* Читаем из файла */
     const auto& read_segments = tg.to_read_.GetAllSegmentsSorted();
     std::unordered_map<File*, ProcessingState> read_states;
+
     for (const auto& seg : read_segments)
     {
         size_t count = seg.second - seg.first + 1;
@@ -252,11 +248,11 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
 size_t FileManager::ReadFromFile(char* read_to, size_t position, size_t count)
 {
     std::fseek(phys_file_.f_, position, SEEK_SET);
-    return std::fread(read_to, count, count, phys_file_.f_);
+    return std::fread(read_to, sizeof(char), count, phys_file_.f_);
 }
 
 size_t FileManager::WriteToFile(const char* write_from, size_t position, size_t count)
 {
     std::fseek(phys_file_.f_, position, SEEK_SET);
-    return std::fwrite(write_from, count, count, phys_file_.f_);
+    return std::fwrite(write_from, sizeof(char), count, phys_file_.f_);
 }

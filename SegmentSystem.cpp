@@ -44,6 +44,7 @@ void TestTask::SegmentSystem::AddSegment(Segment&& new_segment)
         uint64_t old_size = right_addition->first - right_addition->second + 1;
 
         auto segment_iter = size_mappings_[old_size].find({{right_addition->second, right_addition->first}});
+        std::cout << segment_iter->data_.size() << ", " << new_segment.data_.size() << '\n';
         new_segment.data_ = segment_iter->data_ + new_segment.data_;
         std::copy(segment_iter->tasks_.begin(), segment_iter->tasks_.end(), std::back_inserter(new_segment.tasks_));
 
