@@ -1,6 +1,5 @@
-SRC = tests_storage.cpp ../../FileManager.cpp ../../CacheManager.cpp ../../Journal.cpp \
-	../../Concurrency/TicketLock/Spin.cpp ../Concurrency/ThreadPool/ThreadPool.cpp \
-	../../SegmentSystem.cpp ../../Concurrency/TicketLock/RWTicketLock.cpp
+SRC = tests_journal.cpp ../../Journal.cpp \
+	../../Concurrency/TicketLock/Spin.cpp ../Concurrency/ThreadPool/ThreadPool.cpp
 
 NAME = test
 

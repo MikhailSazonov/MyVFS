@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <fstream>
 #include <stdio.h>
+#include <cerrno>
+#include <cstring>
 
 #include "CacheManager.hpp"
 #include "SegmentSystem.hpp"
@@ -30,24 +32,25 @@ namespace TestTask
 
     struct ProcessingState
     {
+        std::set<std::pair<uint64_t, uint64_t>>::iterator seg_iter;
         size_t pos_{0};
         bool finished_{false};
-        std::set<std::pair<uint64_t, uint64_t>>::iterator seg_iter;
     };
 
     class FileManager
     {
         public:
-            FileManager(const std::string&, std::optional<size_t> max_tasks_per_one = std::nullopt);
+            FileManager(Cache::CacheManager&,
+            const std::string&, std::optional<size_t> max_tasks_per_one = std::nullopt);
 
             ~FileManager();
 
-            ssize_t Read(File*, char*, size_t);
+            size_t Read(File*, char*, size_t);
 
-            ssize_t Write(File*, const char*, size_t);
+            size_t Write(File*, const char*, size_t);
 
         private:
-            TasksGroup ProcessTasks();
+            void ProcessTasks();
 
             void freeStorage(File*);
 
@@ -65,8 +68,8 @@ namespace TestTask
             size_t WriteToFile(const char*, size_t, size_t);
 
         private:
-            Journal tasks_journal_;
             Cache::CacheManager& cache_;
+            Journal tasks_journal_;
 
             const std::optional<size_t> max_tasks_per_once_;
 

@@ -32,7 +32,7 @@ void TestTask::SegmentSystem::AddSegment(Segment&& new_segment)
 
         auto segment_iter = size_mappings_[old_size].find({{left_addition->first, left_addition->second}});
         new_segment.data_ += segment_iter->data_;
-        std::copy(segment_iter->files_.begin(), segment_iter->files_.end(), std::back_inserter(new_segment.files_));
+        std::copy(segment_iter->tasks_.begin(), segment_iter->tasks_.end(), std::back_inserter(new_segment.tasks_));
 
         size_mappings_[old_size].erase(segment_iter);
     }
@@ -45,7 +45,7 @@ void TestTask::SegmentSystem::AddSegment(Segment&& new_segment)
 
         auto segment_iter = size_mappings_[old_size].find({{right_addition->second, right_addition->first}});
         new_segment.data_ = segment_iter->data_ + new_segment.data_;
-        std::copy(segment_iter->files_.begin(), segment_iter->files_.end(), std::back_inserter(new_segment.files_));
+        std::copy(segment_iter->tasks_.begin(), segment_iter->tasks_.end(), std::back_inserter(new_segment.tasks_));
 
         size_mappings_[old_size].erase(segment_iter);
     }
@@ -97,8 +97,8 @@ std::optional<TestTask::Segment> TestTask::SegmentSystem::GetSegmentBySize(uint6
     return *segment_iter;
 }
 
-const TestTask::Segment& GetSegmentByPoints(uint64_t left, uint64_t right)
+const TestTask::Segment& TestTask::SegmentSystem::GetSegmentByPoints(uint64_t left, uint64_t right) const
 {
     uint64_t size = right - left + 1;
-    return *size_mappings_[size].find(left);
+    return *size_mappings_.find(size)->second.find({{left, right}});
 }

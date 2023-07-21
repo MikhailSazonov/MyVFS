@@ -7,7 +7,7 @@
 namespace TestTask::Concurrency
 {
     /*
-        Лок-фри очередь в виде интрузивного списка
+        Лок-фри очередь Майкла-Скотта с интрузивностью
     */
 
     template <typename T>
@@ -24,7 +24,7 @@ namespace TestTask::Concurrency
                         return nullptr;
                     }
                     Node<T>* next = curr_head->next_.load(std::memory_order_acquire);
-                    if (head_.compare_exchange_weak(curr_head, next, std::memory_order_release))
+                    if (head_.compare_exchange_weak(curr_head, next, std::memory_order_acq_rel))
                     {
                         return next;
                     }
@@ -48,7 +48,7 @@ namespace TestTask::Concurrency
                     }
 
                     Node<T>* null_node = nullptr;
-                    if (curr_tail->next_.compare_exchange_weak(null_node, new_node, std::memory_order_release))
+                    if (curr_tail->next_.compare_exchange_weak(null_node, new_node, std::memory_order_acq_rel))
                     {
                         break;
                     }

@@ -46,14 +46,14 @@ namespace TestTask
 
             std::optional<Segment> GetSegmentBySize(uint64_t);
 
-            const Segment& GetSegmentByPoints(uint64_t, uint64_t);
+            const Segment& GetSegmentByPoints(uint64_t, uint64_t) const;
 
             inline const std::map<uint64_t, std::set<Segment, SegmentComp>>& GetAllSegments()
             {
                 return size_mappings_;
             }
 
-            inline const std::map<uint64_t, uint64_t>& GetAllSegmentsSorted()
+            inline const std::map<uint64_t, uint64_t>& GetAllSegmentsSorted() const
             {
                 return left_sides_;
             }

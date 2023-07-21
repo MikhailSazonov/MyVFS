@@ -2,14 +2,19 @@
 
 using namespace TestTask;
 
-FileManager::FileManager(const std::string& worker_id,
+FileManager::FileManager(Cache::CacheManager& cache,
+const std::string& worker_id,
 std::optional<size_t> max_tasks_per_one)
-    : max_tasks_per_once_(max_tasks_per_one)
+    : cache_(cache), max_tasks_per_once_(max_tasks_per_one)
     {
-        if (!(phys_file_.f_ = fopen("/" + worker_id, "a+")))
+        if (!(phys_file_.f_ = fopen(std::string("/" + worker_id).c_str(), "a+")))
         {
+            std::cerr << std::strerror(errno) << '\n';
             throw OpenStorageError();
         }
+        worker_.emplace([this](){
+            this->ProcessTasks();
+        });
     }
 
 FileManager::~FileManager()
@@ -19,85 +24,72 @@ FileManager::~FileManager()
     worker_->join();
 }
 
-/*
-    Асинхронное чтение/запись на диск было бы гораздо эффективнее,
-    зато в синхронном случае в этом месте нет динамических аллокаций
-*/
-
-ssize_t FileManager::Read(File* f, char* buf, size_t len);
+size_t FileManager::Read(File* f, char* buf, size_t len)
 {
-    Node<Task> new_node;
-    new_node.data_.f_ = f;
-    new_node.data_.type_ = TaskType::READ;
-    new_node.data_.buf_ = buf;
-    new_node.data_.len_ = len;
-    tasks_journal_.AddTask(&new_node);
-    while (!new_node.task_finished_.load(std::memory_order_acquire))
-    {
-        Spin();
-    }
-    return new_node.data_.task_result_;
+    Task new_task;
+    new_task.f_ = f;
+    new_task.type_ = TaskType::READ;
+    new_task.buf_ = buf;
+    new_task.len_ = len;
+    tasks_journal_.AddTask(&new_task);
+    std::cout << "added\n";
+    return tasks_journal_.WaitForTask(&new_task);
 }
 
-ssize_t FileManager::Write(File* f, const char* buf, size_t len)
+size_t FileManager::Write(File* f, const char* buf, size_t len)
 {
-    Node<Task> new_node;
-    new_node.data_.f_ = f;
-    new_node.data_.type_ = TaskType::WRITE;
-    new_node.data_.buf_ = buf;
-    new_node.data_.len_ = len;
-    tasks_journal_.AddTask(&new_node);
-    while (!new_node.task_finished_.load(std::memory_order_acquire))
-    {
-        Spin();
-    }
-    return new_node.task_result_;
+    Task new_task;
+    new_task.f_ = f;
+    new_task.type_ = TaskType::WRITE;
+    new_task.buf_ = buf;
+    new_task.len_ = len;
+    tasks_journal_.AddTask(&new_task);
+    return tasks_journal_.WaitForTask(&new_task);
 }
 
-TasksGroup FileManager::ProcessTasks()
+void FileManager::ProcessTasks()
 {
     while (!quit_.load(std::memory_order_acquire))
     {
         TasksGroup tasks_group_;
         size_t i = 0;
-        for (; !max_tasks_per_once_.has_value() || i < *max_tasks_per_one; ++i)
+        std::cout << "I BEFORE: " << i << '\n';
+        for (; !max_tasks_per_once_.has_value() || i < *max_tasks_per_once_; ++i)
         {
-            Node<Task>* next_task_ = tasks_journal_.ExtractTask();
-            if (!next_task_)
+            Concurrency::Node<Task>* next_task = tasks_journal_.ExtractTask();
+            // std::cout << next_task << '\n';
+            if (!next_task)
             {
                 break;
             }
-            auto& task = next_task_->data_;
-            switch (task.type_)
+            auto& task = next_task->data_;
+            switch (task->type_)
             {
-                case (TaskType::READ)
-                {
+                case TaskType::READ:
                     /* 
                         Последняя проверка перед тем, как добавить задачу:
                         возможно, мы недавно читали файл с диска и он лежит в кэше.
                         Если же нет, то нужно прочитать данные с диска (за данный файл отвечает этот
                         поток => другим путём данные в кэше не появятся)
                     */
-                    if (cache_.Read(task.f_, std::get<char*>(task.buf_), task.len_) >= 0)
+                    if (cache_.Read(task->f_, std::get<char*>(task->buf_), task->len_) >= 0)
                     {
-                        tasks_journal_.MarkDone(&task);
+                        tasks_journal_.MarkDone(&*task);
                         continue;
                     }
-                    addReadSegments(&task, tasks_group_);
+                    addReadSegments(&*task, tasks_group_);
                     break;
-                }
-                case (TaskType::WRITE)
-                {
-                    freeStorage(task.f_);
-                    findStorageForData(&task, task.len_, tasks_group_, std::get<const char*>(task.buf_));
+                case TaskType::WRITE:
+                    freeStorage(task->f_);
+                    findStorageForData(&*task, task->len_, tasks_group_, std::get<const char*>(task->buf_));
                     break;
-                }
             }
-            tasks_group_.tasks_.push_back(&task);
+            tasks_group_.tasks_.push_back(&*task);
         }
+        std::cout << "I AFTER: " <<i << '\n';
         if (i == 0)
         {
-            Spin();
+            Concurrency::Spin();
             continue;
         }
         ExecuteTasks(tasks_group_);
@@ -125,8 +117,9 @@ const std::pair<uint64_t, uint64_t>& seg,
 const std::pair<uint64_t, uint64_t>& copy_idxs)
 {
     phys_file_.free_segments_.RemoveSegment({seg});
-    f->location_.chunks_info_.insert(seg);
-    Segment new_seg{seg, buf + copy_idxs.first, buf + copy_idxs.second, task->f_};
+    task->f_->location_.chunks_info_.insert(seg);
+    Segment new_seg{seg, std::string(buf + copy_idxs.first,
+    copy_idxs.second - copy_idxs.first + 1), {task}};
     tg.to_write_.AddSegment(std::move(new_seg));
 }
 
@@ -177,6 +170,8 @@ void FileManager::findStorageForData(Task* task, size_t size, TasksGroup& tg, co
 
 void FileManager::ExecuteTasks(const TasksGroup& tg)
 {
+    std::cout << "EXEC\n";
+
     /* Читаем из файла */
     const auto& read_segments = tg.to_read_.GetAllSegmentsSorted();
     std::unordered_map<File*, ProcessingState> read_states;
@@ -185,12 +180,12 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
         size_t count = seg.second - seg.first + 1;
         std::string buf;
         buf.resize(count);
-        ssize_t result = ReadFromFile(buf.c_str(), seg.first, count);
+        size_t result = ReadFromFile(buf.data(), seg.first, count);
 
         const auto& seg_struct = tg.to_read_.GetSegmentByPoints(seg.first, seg.second);
-        for (const auto* task : seg_struct.tasks_)
+        for (auto* task : seg_struct.tasks_)
         {
-            const auto* f = task->f_;
+            auto* f = task->f_;
             if (read_states.find(f) == read_states.end())
             {
                 read_states[f] = {f->location_.chunks_info_.begin()};
@@ -208,7 +203,7 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
             if (++read_states[f].seg_iter == f->location_.chunks_info_.end() ||
                         pos2 > result)
             {
-                task->task_result_ = read_states[f].pos;
+                task->task_result_ = read_states[f].pos_;
                 tasks_journal_.MarkDone(task);
             }
         }
@@ -221,15 +216,16 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
     for (const auto& seg : write_segments)
     {
         size_t count = seg.second - seg.first + 1;
-        ssize_t result = WriteToFile(buf.c_str(), seg.first, count);
 
         const auto& seg_struct = tg.to_write_.GetSegmentByPoints(seg.first, seg.second);
+        size_t result = WriteToFile(seg_struct.data_.c_str(), seg.first, count);
+
         for (auto* task : seg_struct.tasks_)
         {
             auto* f = task->f_;
             if (write_states.find(f) == write_states.end())
             {
-                write_states[f] = {f->location_.chunks_info_.begin()};
+                write_states[f] = ProcessingState{f->location_.chunks_info_.begin()};
             }
             size_t pos1 = write_states[f].seg_iter->first - seg.first;
             size_t pos2 = write_states[f].seg_iter->second - seg.first;
@@ -241,7 +237,7 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
                 write_states[f].pos_ += count_f;
             }
             if (++write_states[f].seg_iter == f->location_.chunks_info_.end() ||
-                        (result == -1 || pos2 > (size_t)result))
+                        pos2 > result)
             {
                 task->task_result_ = write_states[f].pos_;
                 tasks_journal_.MarkDone(task);

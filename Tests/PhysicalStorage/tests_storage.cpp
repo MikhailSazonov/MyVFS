@@ -1,4 +1,5 @@
 #include <FileManager.hpp>
+#include <CacheManager.hpp>
 #include <Journal.hpp>
 #include <ThreadPool.hpp>
 
@@ -41,19 +42,29 @@ int main() {
     section("storage");
 
     test([&]() {
+        Guard<std::unordered_map<std::string, File*>> g;
+        CacheManager dummy_cache(10, 0.75, g);
+        FileManager mg(dummy_cache, "testing");
 
-        FileManager mg("testing");
+        std::cout << "fm spawned\n";
 
         File* a = TestGenerator::CreateFile();
 
         std::string content = "ABC";
 
         ssize_t wr = mg.Write(a, content.c_str(), 3);
+
+        std::cout << "written\n";
         
         assert_equal(wr, 3);
 
         char buf[100] = {0};
+
+        std::cout << "about to read\n";
+
         ssize_t r = mg.Read(a, buf, 10);
+
+        std::cout << "read\n";
         
         std::string rd(buf);
 
