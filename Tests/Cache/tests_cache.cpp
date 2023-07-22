@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
 
 using namespace Executors;
 using namespace TestTask;
@@ -39,44 +40,45 @@ std::string CreateRandomString(int len)
 int main() {
     section("cache");
     test([&]() {
-        Guard<std::unordered_map<std::string, File*>> g;
+        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
         CacheManager cache(10, 0.75, g);
         auto& um = g.WriteAccess();
-        um["ab"] = TestGenerator::CreateFile();
-        um["ac"] = TestGenerator::CreateFile();
-        um["ad"] = TestGenerator::CreateFile();
+
+        um["ab"].reset(TestGenerator::CreateFile());
+        um["ac"].reset(TestGenerator::CreateFile());
+        um["ad"].reset(TestGenerator::CreateFile());
         g.ReturnAccess();
 
         char buf[100] = {0};
         char ans[100] = {0};
 
-        ssize_t rd = cache.Read(um["ab"], ans, 100);
+        ssize_t rd = cache.Read(um["ab"].get(), ans, 100);
         assert_equal(rd, -1);
 
         strcpy(buf, "ABCDE");
-        cache.Write(um["ab"], buf, 5);
+        cache.Write(um["ab"].get(), buf, 5);
 
-        rd = cache.Read(um["ab"], ans, 100);
+        rd = cache.Read(um["ab"].get(), ans, 100);
         assert_equal(rd, 5);
         assert_equal(strcmp(ans, "ABCDE"), 0);
 
-        cache.Write(um["ac"], buf, 5);
-        cache.Write(um["ad"], buf, 5);
+        cache.Write(um["ac"].get(), buf, 5);
+        cache.Write(um["ad"].get(), buf, 5);
 
         std::this_thread::sleep_for(500ms);
 
-        rd = cache.Read(um["ab"], ans, 100);
+        rd = cache.Read(um["ab"].get(), ans, 100);
         assert_equal(rd, -1);
 
     }, "Just works");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, File*>> g;
+        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
         CacheManager cache(100, 0.75, g);
         auto& um = g.WriteAccess();
-        um["a"] = TestGenerator::CreateFile();
-        um["b"] = TestGenerator::CreateFile();
-        um["c"] = TestGenerator::CreateFile();
+        um["a"].reset(TestGenerator::CreateFile());
+        um["b"].reset(TestGenerator::CreateFile());
+        um["c"].reset(TestGenerator::CreateFile());
         g.ReturnAccess();
 
         ThreadPool tp(6);
@@ -93,7 +95,7 @@ int main() {
                     int rand_idx = random() % 3;
                     std::string a = "a";
                     a[0] += rand_idx;
-                    cache.Write(um[a], random_str.c_str(), 10);
+                    cache.Write(um[a].get(), random_str.c_str(), 10);
                     write_to_file.fetch_or(1 << rand_idx);
                 }
             });
@@ -110,7 +112,7 @@ int main() {
                         char buf[10];
                         std::string a = "a";
                         a[0] += rand_idx;
-                        ssize_t rd = cache.Read(um[a], buf, 10);
+                        ssize_t rd = cache.Read(um[a].get(), buf, 10);
                         assert(rd == 10);
                     }
                 }
@@ -123,14 +125,14 @@ int main() {
     }, "Massive writes");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, File*>> g;
+        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
         CacheManager cache(60, 0.75, g);
         auto& um = g.WriteAccess();
-        um["a"] = TestGenerator::CreateFile();
-        um["b"] = TestGenerator::CreateFile();
-        um["c"] = TestGenerator::CreateFile();
-        um["d"] = TestGenerator::CreateFile();
-        um["e"] = TestGenerator::CreateFile();
+        um["a"].reset(TestGenerator::CreateFile());
+        um["b"].reset(TestGenerator::CreateFile());
+        um["c"].reset(TestGenerator::CreateFile());
+        um["d"].reset(TestGenerator::CreateFile());
+        um["e"].reset(TestGenerator::CreateFile());
         g.ReturnAccess();
 
         ThreadPool tp(10);
@@ -146,7 +148,7 @@ int main() {
                     a[0] += rand_idx;
 
                     char buf[30];
-                    ssize_t rd = cache.Read(um[a], buf, 20);
+                    ssize_t rd = cache.Read(um[a].get(), buf, 20);
 
                     if (rd == -1)
                     {
@@ -155,7 +157,7 @@ int main() {
                         {
                             str.push_back('a' + rand_idx);
                         }
-                        cache.Write(um[a], str.c_str(), 20);
+                        cache.Write(um[a].get(), str.c_str(), 20);
                     }
                     else
                     {

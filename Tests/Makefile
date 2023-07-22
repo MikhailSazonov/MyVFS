@@ -1,7 +1,10 @@
 TARGETS = Concurrency/TicketLock \
 			Concurrency/MSQueue \
 			Cache \
-			SegmentSystem
+			SegmentSystem \
+			Journal \
+			PhysicalStorage \
+			VFS
 
 fclean:
 	@$(foreach dir, $(TARGETS), $(MAKE) fclean -C $(dir); )

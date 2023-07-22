@@ -39,14 +39,19 @@ namespace TestTask
             CLOSED = 0, READONLY = 1, WRITEONLY = 2
         };
 
-        // ?
-        const char *filename_;
-        std::atomic<Mode> mode_{Mode::CLOSED};
+        public:
+            std::string filename_;
+            std::string full_filename_;
 
-        Concurrency::Guard<CachedInfo> guarded_cache_;
-        std::atomic<uint64_t> last_time_read_{0};
+        private:
+            std::atomic<Mode> mode_{Mode::CLOSED};
 
-        // Информация о физическом местоположении данных
-        PhysicalLocation location_;
+            Concurrency::Guard<CachedInfo> guarded_cache_;
+            std::atomic<uint64_t> last_time_read_{0};
+
+            // Информация о физическом местоположении данных
+            PhysicalLocation location_;
+
+            size_t manager_idx_;
     };
 }

@@ -1,18 +1,21 @@
 #pragma once
 
 #include "Node.hpp"
+#include "../../JournalFwd.hpp"
 
 #include <iostream>
 
 namespace TestTask::Concurrency
 {
     /*
-        Лок-фри очередь Майкла-Скотта с интрузивностью
+        Лок-фри очередь Майкла-Скотта
     */
 
     template <typename T>
     class MSQueue
     {
+        friend class TestTask::Journal;
+
         public:
             Node<T>* TryPop()
             {
@@ -38,8 +41,8 @@ namespace TestTask::Concurrency
                 while (true)
                 {
                     curr_tail = tail_.load(std::memory_order_acquire);
-
                     auto* next = curr_tail->next_.load(std::memory_order_acquire);
+
                     if (next != nullptr)
                     {
                         // Помогаем другому потоку, который (возможно) находится в промежуточном состоянии

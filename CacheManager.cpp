@@ -12,7 +12,7 @@ namespace TestTask::Cache::Detail
 }
 
 CacheManager::CacheManager(size_t max_capacity, double stop_cleaning_threshold,
-Guard<std::unordered_map<std::string, File*>>& guarded_fileset_ref)
+Guard<std::unordered_map<std::string, std::unique_ptr<File>>>& guarded_fileset_ref)
     :
     max_capacity_(max_capacity),
     stop_cleaning_threshold_(stop_cleaning_threshold),
@@ -124,7 +124,7 @@ void CacheManager::InvalidateCache(CacheWorker& worker)
             for (const auto& name_file : fileset)
             {
                 auto last_time_read = name_file.second->last_time_read_.load(std::memory_order_acquire); 
-                cache_freshness[last_time_read] = name_file.second;
+                cache_freshness[last_time_read] = name_file.second.get();
                 uint8_t epoch = Detail::CURRENT_EPOCH.load(std::memory_order_acquire);
                 if (epoch != current_epoch)
                 {

@@ -13,7 +13,6 @@ uint64_t TestTask::SegmentSystem::GetSize(const Segment& segment)
     return segment.points_.second - segment.points_.first + 1;
 }
 
-
 void TestTask::SegmentSystem::AddSegment(Segment&& new_segment)
 {
     NormalizeSegment(new_segment);
@@ -24,7 +23,7 @@ void TestTask::SegmentSystem::AddSegment(Segment&& new_segment)
         return;
     }
     // Присоединяем сегменты справа
-    auto left_addition = left_sides_.find(new_segment.points_.second + 1); 
+    auto left_addition = left_sides_.find(new_segment.points_.second + 1);
     if (left_addition != left_sides_.end())
     {
         new_segment.points_.second = left_addition->second;
@@ -35,20 +34,22 @@ void TestTask::SegmentSystem::AddSegment(Segment&& new_segment)
         std::copy(segment_iter->tasks_.begin(), segment_iter->tasks_.end(), std::back_inserter(new_segment.tasks_));
 
         size_mappings_[old_size].erase(segment_iter);
+        left_sides_.erase(left_addition);
     }
+
     // Слева
-    auto right_addition = right_sides_.find(new_segment.points_.first - 1); 
+    auto right_addition = right_sides_.find(new_segment.points_.first - 1);
     if (right_addition != right_sides_.end())
     {
         new_segment.points_.first = right_addition->second;
         uint64_t old_size = right_addition->first - right_addition->second + 1;
 
         auto segment_iter = size_mappings_[old_size].find({{right_addition->second, right_addition->first}});
-        std::cout << segment_iter->data_.size() << ", " << new_segment.data_.size() << '\n';
         new_segment.data_ = segment_iter->data_ + new_segment.data_;
         std::copy(segment_iter->tasks_.begin(), segment_iter->tasks_.end(), std::back_inserter(new_segment.tasks_));
 
         size_mappings_[old_size].erase(segment_iter);
+        right_sides_.erase(right_addition);
     }
 
     uint64_t total_size = GetSize(new_segment);
@@ -88,12 +89,20 @@ void TestTask::SegmentSystem::RemoveSegment(Segment&& segment_to_rm)
     }
 }
 
-std::optional<TestTask::Segment> TestTask::SegmentSystem::GetSegmentBySize(uint64_t size)
+std::optional<TestTask::Segment> TestTask::SegmentSystem::GetSegmentBySize(uint64_t size, uint64_t idx)
 {
     auto segment_iter = size_mappings_[size].begin();
     if (segment_iter == size_mappings_[size].end())
     {
         return std::nullopt;
+    }
+    for (size_t i = 0; i < idx; ++i)
+    {
+        ++segment_iter;
+        if (segment_iter == size_mappings_[size].end())
+        {
+            return std::nullopt;
+        }
     }
     return *segment_iter;
 }

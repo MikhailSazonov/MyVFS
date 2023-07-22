@@ -33,6 +33,8 @@ namespace TestTask
         std::atomic<TaskStatus> status_{TaskStatus::INIT};
 
         uint32_t version_;
+
+        std::atomic<uint32_t> contestants_{0};
     };
 
     /*
@@ -64,8 +66,9 @@ namespace TestTask
             void Clear();
 
         private:
-            Concurrency::Node<Task*>* freelist_tail_{nullptr};
-            std::atomic<uint32_t> version_{0};
+            std::atomic<uint32_t> inserted_;
+            uint32_t addition_;
             Concurrency::MSQueue<Task*> queue_;
+            Concurrency::Node<Task*>* freelist_tail_{&queue_.dummy_};
     };
 }

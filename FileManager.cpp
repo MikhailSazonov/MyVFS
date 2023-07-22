@@ -21,7 +21,7 @@ std::optional<size_t> max_tasks_per_one)
 
 FileManager::~FileManager()
 {
-    fclose(phys_file_.f_);
+    std::fclose(phys_file_.f_);
     quit_.store(true, std::memory_order_release);
     worker_->join();
 }
@@ -122,7 +122,9 @@ const std::pair<uint64_t, uint64_t>& copy_idxs)
 void FileManager::findStorageForData(Task* task, size_t size, TasksGroup& tg, const char* buf)
 {
     const auto& sorted_segments = phys_file_.free_segments_.GetAllSegmentsSorted();
+
     /* Проверяем, можно ли файл записать на диск целиком в свободный чанк */
+
     auto full_file_chunk = phys_file_.free_segments_.GetSegmentBySize(size);
     if (full_file_chunk.has_value())
     {
@@ -130,22 +132,33 @@ void FileManager::findStorageForData(Task* task, size_t size, TasksGroup& tg, co
         return;
     }
     /* Проверяем, есть ли 2 свободных сегмента, в которые файл целиком поместится */
+
     if (sorted_segments.size() >= 2)
     {
-        for (size_t i = 1; i < size / 2; ++i)
+        for (size_t i = 1; i <= size / 2; ++i)
         {
             auto chunk_1 = phys_file_.free_segments_.GetSegmentBySize(i);
-            auto chunk_2 = phys_file_.free_segments_.GetSegmentBySize(size - i);
+            auto chunk_2 = phys_file_.free_segments_.GetSegmentBySize(size - i, (i == size - i ? 1 : 0));
             if (chunk_1.has_value() && chunk_2.has_value())
             {
-                addWriteSegment(task, tg, buf, chunk_1->points_, {0, i});
-                addWriteSegment(task, tg, buf, chunk_2->points_, {i, size});
+                if (chunk_1->points_.first < chunk_2->points_.first)
+                {
+                    addWriteSegment(task, tg, buf, chunk_1->points_, {0, i});
+                    addWriteSegment(task, tg, buf, chunk_2->points_, {i, size});
+                }
+                else
+                {
+                    addWriteSegment(task, tg, buf, chunk_1->points_, {size - i, size});
+                    addWriteSegment(task, tg, buf, chunk_2->points_, {0, size - i});
+                }
                 return;
             }   
         }
     }
+
     /* Просто пишем в свободные сегменты, с начала файла */
     size_t total_len = 0;
+    std::map<uint64_t, uint64_t> segments_to_write;
     for (const auto& seg : sorted_segments)
     {
         if (total_len == size)
@@ -154,8 +167,19 @@ void FileManager::findStorageForData(Task* task, size_t size, TasksGroup& tg, co
         }
         uint64_t right_side = std::min(seg.second, seg.first + (size - total_len) - 1);
         uint64_t length = right_side - seg.first + 1;
-        addWriteSegment(task, tg, buf, {seg.first, right_side}, {total_len, total_len + length});
+        total_len += length;
+        segments_to_write.insert(seg);
     }
+
+    total_len = 0;
+    for (const auto& seg : segments_to_write)
+    {
+        uint64_t right_side = std::min(seg.second, seg.first + (size - total_len) - 1);
+        uint64_t length = right_side - seg.first + 1;
+        addWriteSegment(task, tg, buf, {seg.first, right_side}, {total_len, total_len + length});
+        total_len += length;
+    }
+
     /* Если их не хватило, добавляем в конец файла */
     if (total_len < size)
     {
@@ -211,9 +235,9 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
 
     for (const auto& seg : write_segments)
     {
-        size_t count = seg.second - seg.first + 1;
-
         const auto& seg_struct = tg.to_write_.GetSegmentByPoints(seg.first, seg.second);
+
+        size_t count = seg.second - seg.first + 1;
         size_t result = WriteToFile(seg_struct.data_.c_str(), seg.first, count);
 
         for (auto* task : seg_struct.tasks_)

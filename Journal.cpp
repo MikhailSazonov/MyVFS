@@ -8,6 +8,11 @@ Journal::~Journal()
     {
         auto to_delete = freelist_tail_;
         freelist_tail_ = freelist_tail_->next_;
+        if (to_delete == &queue_.dummy_)
+        {
+            continue;
+        }
+        delete *to_delete->data_;
         delete to_delete;
     }
 }
@@ -20,8 +25,13 @@ Task* Journal::AddTask(File* f, TaskType type, std::variant<char*, const char*> 
     (*new_node->data_)->type_ = type;
     (*new_node->data_)->buf_ = buf;
     (*new_node->data_)->len_ = len;
-    (*new_node->data_)->version_ = version_.load(std::memory_order_acquire);
+    auto* curr_tail = queue_.tail_.load(std::memory_order_acquire);
+    if (curr_tail != &queue_.dummy_)
+    {
+        (*curr_tail->data_)->contestants_.fetch_add(1, std::memory_order_release);
+    }
     queue_.Push(new_node);
+    inserted_.fetch_add(1, std::memory_order_release);
     return *new_node->data_;
 }
 
@@ -31,29 +41,25 @@ Task* Journal::ExtractTask()
     if (next_task == nullptr)
     {
         return nullptr;
-    } 
-    if (freelist_tail_ == nullptr)
-    {
-        freelist_tail_ = next_task;
     }
-    else
-    {
-        freelist_tail_->next_ = next_task;
-    }
-    version_.fetch_add(1, std::memory_order_release);
     Clear();
     return *next_task->data_;
 }
 
 void Journal::Clear()
 {
-    auto current_version = version_.load(std::memory_order_relaxed);
-    while (freelist_tail_ && freelist_tail_->next_ &&
-            (*freelist_tail_->next_.load(std::memory_order_relaxed)->data_)->version_ == current_version &&
-            (*freelist_tail_->data_)->status_.load(std::memory_order_acquire) == TaskStatus::COPIED)
+    while (freelist_tail_->next_ &&
+            (freelist_tail_ == &queue_.dummy_ ||
+            ((*freelist_tail_->data_)->contestants_.load(std::memory_order_acquire) + addition_ == inserted_.load(std::memory_order_acquire) &&
+            (*freelist_tail_->data_)->status_.load(std::memory_order_acquire) == TaskStatus::COPIED)))
     {
         auto to_delete = freelist_tail_;
         freelist_tail_ = freelist_tail_->next_;
+        if (to_delete == &queue_.dummy_)
+        {
+            continue;
+        }
+        addition_ += (*to_delete->data_)->contestants_.load(std::memory_order_acquire);
         delete *to_delete->data_;
         delete to_delete;
     }

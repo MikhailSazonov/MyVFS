@@ -44,7 +44,7 @@ namespace TestTask
             */
             void RemoveSegment(Segment&&);
 
-            std::optional<Segment> GetSegmentBySize(uint64_t);
+            std::optional<Segment> GetSegmentBySize(uint64_t, uint64_t idx = 0);
 
             const Segment& GetSegmentByPoints(uint64_t, uint64_t) const;
 
