@@ -44,7 +44,7 @@ Task* Journal::ExtractTask()
     {
         return nullptr;
     }
-    // Clear();
+    Clear();
     return *next_task->data_;
 }
 
