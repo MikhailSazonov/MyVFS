@@ -5,7 +5,7 @@ NAME = test
 
 OBJ = $(SRC:.cpp=.o)
 
-CPPFLAGS = -std=c++20 -Wall -Wextra -Werror -g -pthread -lpthread -fsanitize=thread -I./ -I../ -I../../ -I../Concurrency/ThreadPool/
+CPPFLAGS = -std=c++20 -Wall -Wextra -Werror -g -pthread -lpthread -I./ -I../ -I../../ -I../Concurrency/ThreadPool/
 
 $(NAME): $(SRC)
 	g++ $(CPPFLAGS) $(SRC) -o $(NAME)

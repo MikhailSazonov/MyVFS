@@ -53,7 +53,7 @@ std::string CreateRandomString(int len)
 
 void ConcurrentTest(size_t threads, size_t iters)
 {
-    Guard<std::unordered_map<std::string, std::unique_ptr<File>>> gu;
+    Guard<std::unordered_map<std::string, File*>> gu;
     CacheManager dummy_cache(10, 0.75, gu);
     FileManager mg(dummy_cache, "storage_test");
     TestGenerator tgen;
@@ -109,7 +109,7 @@ int main() {
     section("storage");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
+        Guard<std::unordered_map<std::string, File*>> g;
         CacheManager dummy_cache(10, 0.75, g);
         FileManager mg(dummy_cache, "storage_test");
         TestGenerator tgen;
@@ -136,7 +136,7 @@ int main() {
     std::remove("./storage_test");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
+        Guard<std::unordered_map<std::string, File*>> g;
         CacheManager dummy_cache(10, 0.75, g);
         FileManager mg(dummy_cache, "storage_test");
         TestGenerator tgen;
@@ -168,7 +168,7 @@ int main() {
     std::remove("./storage_test");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
+        Guard<std::unordered_map<std::string, File*>> g;
         CacheManager dummy_cache(10, 0.75, g);
         FileManager mg(dummy_cache, "storage_test");
         TestGenerator tgen;
@@ -214,7 +214,7 @@ int main() {
     std::remove("./storage_test");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
+        Guard<std::unordered_map<std::string, File*>> g;
         CacheManager dummy_cache(10, 0.75, g);
         FileManager mg(dummy_cache, "storage_test");
         TestGenerator tgen;
@@ -260,7 +260,7 @@ int main() {
     std::remove("./storage_test");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> gu;
+        Guard<std::unordered_map<std::string, File*>> gu;
         CacheManager dummy_cache(10, 0.75, gu);
         FileManager mg(dummy_cache, "storage_test");
         TestGenerator tgen;
@@ -318,7 +318,7 @@ int main() {
     std::remove("./storage_test");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> gu;
+        Guard<std::unordered_map<std::string, File*>> gu;
         CacheManager dummy_cache(10, 0.75, gu);
         FileManager mg(dummy_cache, "storage_test");
         TestGenerator tgen;

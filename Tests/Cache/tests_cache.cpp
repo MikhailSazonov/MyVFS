@@ -19,10 +19,22 @@ namespace TestTask
 {
     struct TestGenerator
     {
-        static File* CreateFile()
+        File* CreateFile()
         {
-            return new File();
+            File* new_file = new File();
+            files_.insert(new_file); 
+            return new_file;
         }
+
+        ~TestGenerator()
+        {
+            for (File* file : files_)
+            {
+                delete file;
+            }
+        }
+
+        std::set<File*> files_;
     };
 }
 
@@ -40,45 +52,48 @@ std::string CreateRandomString(int len)
 int main() {
     section("cache");
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
+        Guard<std::unordered_map<std::string, File*>> g;
         CacheManager cache(10, 0.75, g);
+        TestGenerator tgen;
         auto& um = g.WriteAccess();
 
-        um["ab"].reset(TestGenerator::CreateFile());
-        um["ac"].reset(TestGenerator::CreateFile());
-        um["ad"].reset(TestGenerator::CreateFile());
+        um["ab"] = tgen.CreateFile();
+        um["ac"] = tgen.CreateFile();
+        um["ad"] = tgen.CreateFile();
         g.ReturnAccess();
 
         char buf[100] = {0};
         char ans[100] = {0};
 
-        ssize_t rd = cache.Read(um["ab"].get(), ans, 100);
+        ssize_t rd = cache.Read(um["ab"], ans, 100);
         assert_equal(rd, -1);
 
         strcpy(buf, "ABCDE");
-        cache.Write(um["ab"].get(), buf, 5);
+        cache.Write(um["ab"], buf, 5);
 
-        rd = cache.Read(um["ab"].get(), ans, 100);
+        rd = cache.Read(um["ab"], ans, 100);
         assert_equal(rd, 5);
         assert_equal(strcmp(ans, "ABCDE"), 0);
 
-        cache.Write(um["ac"].get(), buf, 5);
-        cache.Write(um["ad"].get(), buf, 5);
+        cache.Write(um["ac"], buf, 5);
+        cache.Write(um["ad"], buf, 5);
 
         std::this_thread::sleep_for(500ms);
 
-        rd = cache.Read(um["ab"].get(), ans, 100);
+        rd = cache.Read(um["ab"], ans, 100);
         assert_equal(rd, -1);
 
     }, "Just works");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
+        Guard<std::unordered_map<std::string, File*>> g;
         CacheManager cache(100, 0.75, g);
+        TestGenerator tgen;
+
         auto& um = g.WriteAccess();
-        um["a"].reset(TestGenerator::CreateFile());
-        um["b"].reset(TestGenerator::CreateFile());
-        um["c"].reset(TestGenerator::CreateFile());
+        um["a"] = tgen.CreateFile();
+        um["b"] = tgen.CreateFile();
+        um["c"] = tgen.CreateFile();
         g.ReturnAccess();
 
         ThreadPool tp(6);
@@ -95,7 +110,7 @@ int main() {
                     int rand_idx = random() % 3;
                     std::string a = "a";
                     a[0] += rand_idx;
-                    cache.Write(um[a].get(), random_str.c_str(), 10);
+                    cache.Write(um[a], random_str.c_str(), 10);
                     write_to_file.fetch_or(1 << rand_idx);
                 }
             });
@@ -112,7 +127,7 @@ int main() {
                         char buf[10];
                         std::string a = "a";
                         a[0] += rand_idx;
-                        ssize_t rd = cache.Read(um[a].get(), buf, 10);
+                        ssize_t rd = cache.Read(um[a], buf, 10);
                         assert(rd == 10);
                     }
                 }
@@ -125,14 +140,16 @@ int main() {
     }, "Massive writes");
 
     test([&]() {
-        Guard<std::unordered_map<std::string, std::unique_ptr<File>>> g;
+        Guard<std::unordered_map<std::string, File*>> g;
         CacheManager cache(60, 0.75, g);
+        TestGenerator tgen;
+
         auto& um = g.WriteAccess();
-        um["a"].reset(TestGenerator::CreateFile());
-        um["b"].reset(TestGenerator::CreateFile());
-        um["c"].reset(TestGenerator::CreateFile());
-        um["d"].reset(TestGenerator::CreateFile());
-        um["e"].reset(TestGenerator::CreateFile());
+        um["a"] = tgen.CreateFile();
+        um["b"] = tgen.CreateFile();
+        um["c"] = tgen.CreateFile();
+        um["d"] = tgen.CreateFile();
+        um["e"] = tgen.CreateFile();
         g.ReturnAccess();
 
         ThreadPool tp(10);
@@ -148,7 +165,7 @@ int main() {
                     a[0] += rand_idx;
 
                     char buf[30];
-                    ssize_t rd = cache.Read(um[a].get(), buf, 20);
+                    ssize_t rd = cache.Read(um[a], buf, 20);
 
                     if (rd == -1)
                     {
@@ -157,7 +174,7 @@ int main() {
                         {
                             str.push_back('a' + rand_idx);
                         }
-                        cache.Write(um[a].get(), str.c_str(), 20);
+                        cache.Write(um[a], str.c_str(), 20);
                     }
                     else
                     {

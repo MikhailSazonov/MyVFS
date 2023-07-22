@@ -45,10 +45,10 @@ namespace TestTask::Cache
 
     struct CacheWorker
     {
-        CacheWorker(Concurrency::Guard<std::unordered_map<std::string, std::unique_ptr<File>>>& guarded_fileset_ref)
+        CacheWorker(Concurrency::Guard<std::unordered_map<std::string, File*>>& guarded_fileset_ref)
             : guarded_fileset_ref_(guarded_fileset_ref) {}
 
-        Concurrency::Guard<std::unordered_map<std::string, std::unique_ptr<File>>>& guarded_fileset_ref_;
+        Concurrency::Guard<std::unordered_map<std::string, File*>>& guarded_fileset_ref_;
         std::optional<std::thread> worker_;
         std::atomic<bool> stop_{false};
     };
@@ -56,7 +56,7 @@ namespace TestTask::Cache
     class CacheManager
     {
         public:
-            CacheManager(size_t, double, Concurrency::Guard<std::unordered_map<std::string, std::unique_ptr<File>>>&);
+            CacheManager(size_t, double, Concurrency::Guard<std::unordered_map<std::string, File*>>&);
 
             ~CacheManager();
 

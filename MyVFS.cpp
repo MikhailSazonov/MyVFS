@@ -42,7 +42,7 @@ File* MyVFS::Open(const char* name)
     {
         return nullptr;   
     }
-    return file_iter->second.get();
+    return file_iter->second;
 }
 
 
@@ -60,7 +60,7 @@ File* MyVFS::Create(const char* name)
             {
                 return nullptr;
             }
-            return file_iter->second.get();
+            return file_iter->second;
         }
     }
 
@@ -68,15 +68,16 @@ File* MyVFS::Create(const char* name)
     auto& fs = wg.get();
     if (fs.find(std::string(name)) == fs.end())
     {
-        fs[std::string(name)].reset(new File());
+        files_.emplace_back();
+        fs[std::string(name)] = &files_.back();
         fs[std::string(name)]->filename_ = filename;
         fs[std::string(name)]->full_filename_ = name;
-        BindFileToFS(fs[std::string(name)].get());
-        AddToTheTree(fs[std::string(name)].get(), name);
+        BindFileToFS(fs[std::string(name)]);
+        AddToTheTree(fs[std::string(name)], name);
     }
     fs[std::string(name)]->mode_.store(File::Mode::WRITEONLY, std::memory_order_release);
 
-    return fs[std::string(name)].get();
+    return fs[std::string(name)];
 }
 
 size_t MyVFS::Read(File *f, char *buff, size_t len)

@@ -10,6 +10,7 @@
 
 #include <unordered_set>
 #include <optional>
+#include <deque>
 #include <memory>
 
 namespace TestTask
@@ -35,7 +36,9 @@ namespace TestTask
             void AddToTheTree(File *, const std::string&);
 
         private:
-            Concurrency::Guard<std::unordered_map<std::string, std::unique_ptr<File>>> guarded_fileset_;
+            Concurrency::Guard<std::unordered_map<std::string, File*>> guarded_fileset_;
+
+            std::deque<File> files_;
 
             Cache::CacheManager ram_cache_;
 

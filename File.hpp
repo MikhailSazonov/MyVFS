@@ -33,11 +33,12 @@ namespace TestTask
         friend class FileManager;
         friend class Cache::CacheManager;
 
-        File() {}
-
         enum class Mode : uint8_t {
             CLOSED = 0, READONLY = 1, WRITEONLY = 2
         };
+
+        public:
+            File() {}
 
         public:
             std::string filename_;
