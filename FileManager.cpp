@@ -213,7 +213,7 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
             size_t pos1 = read_states[f].seg_iter->first - seg.first;
             size_t pos2 = read_states[f].seg_iter->second - seg.first;
             
-            /* Добавляем несколько проверок, на случай, если чтение с диска выдаст ошибку */
+            /* Добавляем проверку, на случай, если чтение с диска выдаст ошибку */
             if (result >= pos1)
             {
                 size_t count_f = std::min(pos2 - pos1 + 1, result - pos1);
@@ -250,7 +250,7 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
             size_t pos1 = write_states[f].seg_iter->first - seg.first;
             size_t pos2 = write_states[f].seg_iter->second - seg.first;
             
-            /* Добавляем несколько проверок, на случай, если запись на диск выдаст ошибку */
+            /* Добавляем проверку, на случай, если запись на диск выдаст ошибку */
             if (result >= pos1)
             {
                 size_t count_f = std::min(pos2 - pos1 + 1, result - pos1);

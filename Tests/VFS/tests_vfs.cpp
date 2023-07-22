@@ -197,7 +197,7 @@ int main() {
 
     test([&]() {
 
-        ConcurrentTest(2, 1000);
+        ConcurrentTest(2, 40000);
     
     }, "Concurrent #1");
 
@@ -205,7 +205,7 @@ int main() {
 
     test([&]() {
 
-        ConcurrentTest(5, 10000);
+        ConcurrentTest(5, 500000);
     
     }, "Concurrent #2");
 

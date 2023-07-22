@@ -2,6 +2,8 @@
 
 using namespace TestTask;
 
+using namespace std::chrono_literals;
+
 Journal::~Journal()
 {
     while (freelist_tail_)
@@ -42,7 +44,7 @@ Task* Journal::ExtractTask()
     {
         return nullptr;
     }
-    Clear();
+    // Clear();
     return *next_task->data_;
 }
 
@@ -72,8 +74,14 @@ void Journal::MarkDone(Task* task)
 
 size_t Journal::WaitForTask(Task* task)
 {
+    auto start = std::chrono::system_clock::now();
     while (task->status_.load(std::memory_order_acquire) == TaskStatus::INIT)
     {
+        // ad-hoc
+        if (std::chrono::system_clock::now() - start > 100ms)
+        {
+            break;
+        }
         Concurrency::Spin();
     }
     size_t res = task->task_result_;
