@@ -46,5 +46,6 @@ namespace TestTask
             std::atomic<uint32_t> round_robin_idx{0};
 
             Dir* root_;
+            size_t workers_;
     };   
 }

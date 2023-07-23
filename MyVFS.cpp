@@ -2,10 +2,13 @@
 
 using namespace TestTask;
 
+thread_local std::unordered_map<File*, Mode> opened_files_;
+
 MyVFS::MyVFS(size_t workers)
     :
         ram_cache_(1 << 20, 0.75, guarded_fileset_)
     ,   managers_(workers)
+    ,   workers_(workers)
 {
     root_ = new Dir();
     for (size_t i = 0; i < workers; ++i)
@@ -35,16 +38,29 @@ File* MyVFS::Open(const char* name)
     {
         return nullptr;
     }
-    // Проверяем через CAS, что файл открыт либо закрыт, либо открыт в readonly
-    auto current_mode = File::Mode::CLOSED;
-    if (!file_iter->second->mode_.compare_exchange_strong(current_mode, File::Mode::READONLY, std::memory_order_acq_rel) &&
-        current_mode != File::Mode::READONLY)
+    auto* f = file_iter->second;
+    // Проверяем режим файла в данном потоке
+    if (opened_files_[f] == Mode::WRITEONLY)
     {
-        return nullptr;   
+        return nullptr;
     }
-    return file_iter->second;
+    /* Пытаемся открыть файл в READONLY-режиме */
+    
+    while (true)
+    {
+        auto file_state = f->ref_count_.load(std::memory_order_acquire);
+        if (file_state < 0)
+        {
+            return nullptr;
+        }
+        if (f->ref_count_.compare_exchange_weak(file_state, file_state + 1, std::memory_order_acq_rel))
+        {
+            opened_files_[f] = Mode::READONLY;
+            return f;
+        }
+    }
+    return nullptr;
 }
-
 
 File* MyVFS::Create(const char* name)
 {
@@ -55,12 +71,15 @@ File* MyVFS::Create(const char* name)
         auto file_iter = fs.find(std::string(name));
         if (file_iter != fs.end())
         {
-            auto current_mode = File::Mode::CLOSED;
-            if (!file_iter->second->mode_.compare_exchange_strong(current_mode, File::Mode::WRITEONLY, std::memory_order_acq_rel))
+            auto* f = file_iter->second;
+            int zero_ref = 0;
+            if (opened_files_[f] == Mode::READONLY
+                || !f->ref_count_.compare_exchange_strong(zero_ref, -1, std::memory_order_acq_rel))
             {
                 return nullptr;
             }
-            return file_iter->second;
+            opened_files_[f] = Mode::WRITEONLY;
+            return f;
         }
     }
 
@@ -69,13 +88,20 @@ File* MyVFS::Create(const char* name)
     if (fs.find(std::string(name)) == fs.end())
     {
         files_.emplace_back();
-        fs[std::string(name)] = &files_.back();
-        fs[std::string(name)]->filename_ = filename;
-        fs[std::string(name)]->full_filename_ = name;
-        BindFileToFS(fs[std::string(name)]);
-        AddToTheTree(fs[std::string(name)], name);
+        auto* f = &files_.back();
+        fs[std::string(name)] = f;
+        f->filename_ = filename;
+        f->full_filename_ = name;
+        BindFileToFS(f);
+        AddToTheTree(f, name);
+        f->ref_count_.fetch_sub(1, std::memory_order_release);
+        opened_files_[f] = Mode::WRITEONLY;
     }
-    fs[std::string(name)]->mode_.store(File::Mode::WRITEONLY, std::memory_order_release);
+    else
+    {
+        /* На случай, если два потока одновременно будут создавать один и тот же файл */
+        return nullptr;
+    }
 
     return fs[std::string(name)];
 }
@@ -125,16 +151,23 @@ void MyVFS::Close(File* f)
     {
         throw FileNotFoundError();
     }
-    if (file_iter->second->mode_.load(std::memory_order_acquire) == File::Mode::CLOSED)
+    switch (opened_files_[f])
     {
-        throw FileClosedError();
+        case Mode::READONLY:
+            f->ref_count_.fetch_sub(1, std::memory_order_release);
+            break;
+        case Mode::WRITEONLY:
+            f->ref_count_.fetch_add(1, std::memory_order_acq_rel);
+            break;
+        case Mode::CLOSED:
+            throw FileClosedError();
     }
-    file_iter->second->mode_.store(File::Mode::CLOSED, std::memory_order_release);
+    opened_files_[f] = Mode::CLOSED;
 }
 
 void MyVFS::BindFileToFS(File* f)
 {
-    f->manager_idx_ = round_robin_idx.fetch_add(1, std::memory_order_acq_rel) % 4;
+    f->manager_idx_ = round_robin_idx.fetch_add(1, std::memory_order_acq_rel) % workers_;
 }
 
 void MyVFS::AddToTheTree(File* f, const std::string& name)

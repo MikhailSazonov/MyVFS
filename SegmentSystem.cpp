@@ -18,6 +18,7 @@ void TestTask::SegmentSystem::AddSegment(Segment&& new_segment)
     NormalizeSegment(new_segment);
     uint64_t segment_size = GetSize(new_segment);
     auto& segment_set = size_mappings_[segment_size];
+
     if (segment_set.find(new_segment) != segment_set.end())
     {
         return;

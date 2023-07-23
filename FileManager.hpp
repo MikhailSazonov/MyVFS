@@ -52,7 +52,7 @@ namespace TestTask
         private:
             void ProcessTasks();
 
-            void freeStorage(File*);
+            void freeStorage(TasksGroup&, File*);
 
             void findStorageForData(Task*, size_t, TasksGroup&, const char*);
 

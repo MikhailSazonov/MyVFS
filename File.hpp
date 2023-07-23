@@ -22,9 +22,9 @@ namespace TestTask
         std::optional<std::string> data_{std::nullopt};
     };
 
-    /*
-        Не реализуем потокобезопасную запись в файл, чтобы не тратить ресурсы
-    */
+    enum class Mode : uint8_t {
+        CLOSED = 0, READONLY = 1, WRITEONLY = 2
+    };
 
     class File
     {
@@ -32,10 +32,6 @@ namespace TestTask
         friend class TestGenerator;
         friend class FileManager;
         friend class Cache::CacheManager;
-
-        enum class Mode : uint8_t {
-            CLOSED = 0, READONLY = 1, WRITEONLY = 2
-        };
 
         public:
             File() {}
@@ -45,13 +41,17 @@ namespace TestTask
             std::string full_filename_;
 
         private:
-            std::atomic<Mode> mode_{Mode::CLOSED};
-
             Concurrency::Guard<CachedInfo> guarded_cache_;
             std::atomic<uint64_t> last_time_read_{0};
 
             // Информация о физическом местоположении данных
             PhysicalLocation location_;
+
+            /*
+                Здесь храним информацию о читателях/писателях файла
+                0 => файл закрыт, -1 => WRONLY, >0 => READONLY
+            */
+            std::atomic<int> ref_count_{0};
 
             size_t manager_idx_;
     };

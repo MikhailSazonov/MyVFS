@@ -74,14 +74,8 @@ void Journal::MarkDone(Task* task)
 
 size_t Journal::WaitForTask(Task* task)
 {
-    auto start = std::chrono::system_clock::now();
     while (task->status_.load(std::memory_order_acquire) == TaskStatus::INIT)
     {
-        // ad-hoc
-        if (std::chrono::system_clock::now() - start > 100ms)
-        {
-            break;
-        }
         Concurrency::Spin();
     }
     size_t res = task->task_result_;

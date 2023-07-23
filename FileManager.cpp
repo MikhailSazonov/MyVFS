@@ -68,7 +68,7 @@ void FileManager::ProcessTasks()
                     addReadSegments(&*task, tasks_group_);
                     break;
                 case TaskType::WRITE:
-                    freeStorage(task->f_);
+                    freeStorage(tasks_group_, task->f_);
                     if (task->len_ > 0)
                     {
                         findStorageForData(&*task, task->len_, tasks_group_, std::get<const char*>(task->buf_));
@@ -99,11 +99,12 @@ void FileManager::addReadSegments(Task* task, TasksGroup& tg)
     }
 }
 
-void FileManager::freeStorage(File* f)
+void FileManager::freeStorage(TasksGroup& tg, File* f)
 {
     for (const auto& segment : f->location_.chunks_info_)
     {
         phys_file_.free_segments_.AddSegment({segment});
+        tg.to_write_.RemoveSegment({segment});
     }
     f->location_.chunks_info_.clear();
 }
@@ -191,6 +192,42 @@ void FileManager::findStorageForData(Task* task, size_t size, TasksGroup& tg, co
 
 void FileManager::ExecuteTasks(const TasksGroup& tg)
 {
+    /* Пишем в файл */
+    const auto& write_segments = tg.to_write_.GetAllSegmentsSorted();
+    std::unordered_map<File*, ProcessingState> write_states;
+
+    for (const auto& seg : write_segments)
+    {
+        const auto& seg_struct = tg.to_write_.GetSegmentByPoints(seg.first, seg.second);
+
+        size_t count = seg.second - seg.first + 1;
+        size_t result = WriteToFile(seg_struct.data_.c_str(), seg.first, count);
+
+        for (auto* task : seg_struct.tasks_)
+        {
+            auto* f = task->f_;
+            if (write_states.find(f) == write_states.end())
+            {
+                write_states[f] = ProcessingState{f->location_.chunks_info_.begin()};
+            }
+            size_t pos1 = write_states[f].seg_iter->first - seg.first;
+            size_t pos2 = write_states[f].seg_iter->second - seg.first;
+            
+            /* Добавляем проверку, на случай, если запись на диск выдаст ошибку */
+            if (result >= pos1)
+            {
+                size_t count_f = std::min(pos2 - pos1 + 1, result - pos1);
+                write_states[f].pos_ += count_f;
+            }
+            if (++write_states[f].seg_iter == f->location_.chunks_info_.end() ||
+                        pos2 > result)
+            {
+                task->task_result_ = write_states[f].pos_;
+                tasks_journal_.MarkDone(task);
+            }
+        }
+    }
+
     /* Читаем из файла */
     const auto& read_segments = tg.to_read_.GetAllSegmentsSorted();
     std::unordered_map<File*, ProcessingState> read_states;
@@ -229,42 +266,6 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
         }
     }
 
-    /* Пишем в файл */
-    const auto& write_segments = tg.to_write_.GetAllSegmentsSorted();
-    std::unordered_map<File*, ProcessingState> write_states;
-
-    for (const auto& seg : write_segments)
-    {
-        const auto& seg_struct = tg.to_write_.GetSegmentByPoints(seg.first, seg.second);
-
-        size_t count = seg.second - seg.first + 1;
-        size_t result = WriteToFile(seg_struct.data_.c_str(), seg.first, count);
-
-        for (auto* task : seg_struct.tasks_)
-        {
-            auto* f = task->f_;
-            if (write_states.find(f) == write_states.end())
-            {
-                write_states[f] = ProcessingState{f->location_.chunks_info_.begin()};
-            }
-            size_t pos1 = write_states[f].seg_iter->first - seg.first;
-            size_t pos2 = write_states[f].seg_iter->second - seg.first;
-            
-            /* Добавляем проверку, на случай, если запись на диск выдаст ошибку */
-            if (result >= pos1)
-            {
-                size_t count_f = std::min(pos2 - pos1 + 1, result - pos1);
-                write_states[f].pos_ += count_f;
-            }
-            if (++write_states[f].seg_iter == f->location_.chunks_info_.end() ||
-                        pos2 > result)
-            {
-                task->task_result_ = write_states[f].pos_;
-                tasks_journal_.MarkDone(task);
-            }
-        }
-    }
-
     /* Записываем внутренний буфер на диск */
     std::fflush(phys_file_.f_);
 }
@@ -272,7 +273,8 @@ void FileManager::ExecuteTasks(const TasksGroup& tg)
 size_t FileManager::ReadFromFile(char* read_to, size_t position, size_t count)
 {
     std::fseek(phys_file_.f_, position, SEEK_SET);
-    return std::fread(read_to, sizeof(char), count, phys_file_.f_);
+    auto res = std::fread(read_to, sizeof(char), count, phys_file_.f_);
+    return res;
 }
 
 size_t FileManager::WriteToFile(const char* write_from, size_t position, size_t count)

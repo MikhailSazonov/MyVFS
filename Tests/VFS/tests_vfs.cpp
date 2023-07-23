@@ -20,6 +20,7 @@ void Remove()
     std::remove("./1");
     std::remove("./2");
     std::remove("./3");
+    std::remove("./4");
 }
 
 namespace TestTask
@@ -30,9 +31,9 @@ namespace TestTask
     }
 }
 
-void ConcurrentTest(size_t threads, size_t iters)
+void ConcurrentTest(size_t threads, size_t workers, size_t iters)
 {
-    MyVFS vfs;
+    MyVFS vfs(workers);
 
     ThreadPool tp(threads);
     tp.Start();
@@ -46,6 +47,9 @@ void ConcurrentTest(size_t threads, size_t iters)
         file_contents[name].reserve(100);
     }
 
+    std::atomic<size_t> reads{0};
+    std::atomic<size_t> writes{0};
+
     for (size_t i = 0; i < threads; ++i)
     {
         tp.Submit([&, i]()
@@ -55,6 +59,7 @@ void ConcurrentTest(size_t threads, size_t iters)
                 size_t action = random() % 2;
                 std::string filename = "/a";
                 filename[1] += random() % threads;
+
                 switch (action)
                 {
                     case 0:
@@ -66,7 +71,9 @@ void ConcurrentTest(size_t threads, size_t iters)
                             }
                             char buf[20] = {0};
                             vfs.Read(f, buf, 20);
-                            assert(std::string(buf) == file_contents[filename]);
+                            assert_equal(std::string(buf), file_contents[filename]);
+                            reads.fetch_add(1, std::memory_order_release);
+                            vfs.Close(f);
                         }
                         break;
                     case 1:
@@ -85,6 +92,8 @@ void ConcurrentTest(size_t threads, size_t iters)
                             }
                             file_contents[filename] = data;
                             vfs.Write(f, (char*)data.c_str(), data.size());
+                            writes.fetch_add(1, std::memory_order_release);
+                            vfs.Close(f);
                         }
                         break;
                 }
@@ -93,7 +102,10 @@ void ConcurrentTest(size_t threads, size_t iters)
     }
 
     tp.WaitIdle();
-    tp.Stop();   
+    tp.Stop();
+
+    std::cout << "Reads: " << reads.load(std::memory_order_acquire) << '\n';
+    std::cout << "Writes: " << writes.load(std::memory_order_acquire) << '\n';
 }
 
 int main() {
@@ -109,6 +121,7 @@ int main() {
         vfs.Close(f);
 
         assert(f = vfs.Open("/good_file"));
+
         vfs.Close(f);
     }, "Just works");
 
@@ -196,8 +209,64 @@ int main() {
     Remove();
 
     test([&]() {
+        MyVFS vfs(1);
+        ThreadPool tp(8);
+        tp.Start();
 
-        ConcurrentTest(2, 40000);
+        File* f;
+        f = vfs.Create("/test_file");
+        vfs.Close(f);
+
+        std::atomic<int> contestants_{0};
+
+        for (size_t i = 0; i < 2; ++i)
+        {
+            tp.Submit([&]() {
+                size_t j = 0;
+                while (j < 50)
+                {
+                    auto* f = vfs.Create("/test_file");
+                    if (f)
+                    {
+                        contestants_.store(contestants_.load() + 1);
+                        assert(contestants_.load() == 1);
+                        contestants_.store(contestants_.load() - 1);
+                        vfs.Close(f);
+                        ++j;
+                    }
+                }
+            });
+        }
+
+        for (size_t i = 0; i < 6; ++i)
+        {
+            tp.Submit([&]() {
+                size_t j = 0;
+                while (j < 800)
+                {
+                    auto* f = vfs.Open("/test_file");
+                    if (f)
+                    {
+                        contestants_.fetch_add(1);
+                        std::this_thread::sleep_for(1ms);
+                        contestants_.fetch_sub(1);
+                        ++j;
+                        vfs.Close(f);
+                    }
+                }
+            });
+        }
+
+        tp.WaitIdle();
+        tp.Stop();
+
+    }, "Reader-writer pattern");
+
+    Remove();
+
+    test([&]() {
+
+        ConcurrentTest(2, 1, 5000);
     
     }, "Concurrent #1");
 
@@ -205,7 +274,7 @@ int main() {
 
     test([&]() {
 
-        ConcurrentTest(5, 500000);
+        ConcurrentTest(8, 4, 1000);
     
     }, "Concurrent #2");
 

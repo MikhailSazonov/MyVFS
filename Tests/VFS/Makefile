@@ -9,10 +9,11 @@ FILE1 = 0
 FILE2 = 1
 FILE3 = 2
 FILE4 = 3
+FILE5 = 5
 
 OBJ = $(SRC:.cpp=.o)
 
-CPPFLAGS = -std=c++20 -Wall -Wextra -Werror -g -fsanitize=address -pthread -lpthread -I./ -I../ -I../../ -I../Concurrency/ThreadPool/
+CPPFLAGS = -std=c++20 -Wall -Wextra -Werror -g -fsanitize=thread -pthread -lpthread -I./ -I../ -I../../ -I../Concurrency/ThreadPool/
 
 $(NAME): $(SRC)
 	g++ $(CPPFLAGS) $(SRC) -o $(NAME)
@@ -25,7 +26,7 @@ clean:
 	rm -f $(OBJ)
 
 fclean: clean
-	rm -f $(NAME) $(FILE1) $(FILE2) $(FILE3) $(FILE4)
+	rm -f $(NAME) $(FILE1) $(FILE2) $(FILE3) $(FILE4) $(FILE 5)
 
 re: fclean all
 
