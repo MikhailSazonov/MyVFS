@@ -13,6 +13,7 @@
 #include "Journal.hpp"
 #include "FileExceptions.hpp"
 #include "Concurrency/TicketLock/Spin.hpp"
+#include "VFSfwd.hpp"
 
 namespace TestTask
 {
@@ -39,6 +40,9 @@ namespace TestTask
 
     class FileManager
     {
+        friend void SerializeVFS(const MyVFS&, std::ostream&);
+        friend void DeserializeVFS(std::istream&, MyVFS&);
+
         public:
             FileManager(Cache::CacheManager&,
             const std::string&, std::optional<size_t> max_tasks_per_one = std::nullopt);
@@ -68,6 +72,9 @@ namespace TestTask
             size_t WriteToFile(const char*, size_t, size_t);
 
         private:
+            PhysicalFile phys_file_;
+            std::string worker_id_;
+
             Cache::CacheManager& cache_;
             Journal tasks_journal_;
 
@@ -75,7 +82,5 @@ namespace TestTask
 
             std::optional<std::thread> worker_;
             std::atomic<bool> quit_{false};
-
-            PhysicalFile phys_file_;
     };
 }

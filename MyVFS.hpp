@@ -18,6 +18,8 @@ namespace TestTask
     struct MyVFS : public IVFS
     {
         friend Dir* GetRoot(MyVFS&);
+        friend void SerializeVFS(const MyVFS&, std::ostream&);
+        friend void DeserializeVFS(std::istream&, MyVFS&);
 
         MyVFS(size_t workers = 4);
         ~MyVFS();
@@ -36,16 +38,18 @@ namespace TestTask
             void AddToTheTree(File *, const std::string&);
 
         private:
-            Concurrency::Guard<std::unordered_map<std::string, File*>> guarded_fileset_;
-
-            std::deque<File> files_;
-
             Cache::CacheManager ram_cache_;
 
-            std::vector<std::optional<FileManager>> managers_;
+            std::deque<File> files_;
             std::atomic<uint32_t> round_robin_idx{0};
-
-            Dir* root_;
             size_t workers_;
-    };   
+            std::vector<std::optional<FileManager>> managers_;
+            
+            Concurrency::Guard<std::unordered_map<std::string, File*>> guarded_fileset_;
+            Dir* root_;
+    };
+
+    void SerializeVFS(const MyVFS&, std::ostream&);
+
+    void DeserializeVFS(std::istream&, MyVFS&);
 }

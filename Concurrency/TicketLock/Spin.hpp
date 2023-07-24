@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CpuArchitecture.hpp"
+#include "../CpuArchitecture.hpp"
 
 namespace TestTask::Concurrency {
     void Spin();

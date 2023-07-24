@@ -5,7 +5,7 @@ using namespace TestTask;
 FileManager::FileManager(Cache::CacheManager& cache,
 const std::string& worker_id,
 std::optional<size_t> max_tasks_per_one)
-    : cache_(cache), max_tasks_per_once_(max_tasks_per_one)
+    : worker_id_(worker_id), cache_(cache), max_tasks_per_once_(max_tasks_per_one)
     {
         std::string storage_name = "./" + worker_id;
         phys_file_.f_ = fopen(storage_name.c_str(), "r+");

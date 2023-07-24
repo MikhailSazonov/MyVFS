@@ -7,19 +7,34 @@ thread_local std::unordered_map<File*, Mode> opened_files_;
 MyVFS::MyVFS(size_t workers)
     :
         ram_cache_(1 << 20, 0.75, guarded_fileset_)
-    ,   managers_(workers)
     ,   workers_(workers)
+    ,   managers_(workers)
 {
     root_ = new Dir();
     for (size_t i = 0; i < workers; ++i)
     {
         managers_[i].emplace(ram_cache_, std::to_string(i));
     }
+    std::ifstream conf("./myvfs");
+    if (conf)
+    {
+        DeserializeVFS(conf, *this);
+        auto wg = Concurrency::WriteGuard(guarded_fileset_);
+        auto& fs = wg.get();
+
+        for (auto& f : files_)
+        {
+            fs[f.full_filename_] = &f;
+            AddToTheTree(&f, f.full_filename_);
+        }
+    }
 }
 
 MyVFS::~MyVFS()
 {
     root_->Clear();
+    std::ofstream conf("./myvfs");
+    SerializeVFS(*this, conf);
 }
 
 static std::string GetFilename(const std::string& name)
@@ -33,19 +48,19 @@ File* MyVFS::Open(const char* name)
     auto rg = Concurrency::ReadGuard(guarded_fileset_);
     const auto& fs = rg.get();
     auto file_iter = fs.find(name);
-    // Проверка на существование
+    /* Проверка на существование */
     if (file_iter == fs.end())
     {
         return nullptr;
     }
     auto* f = file_iter->second;
-    // Проверяем режим файла в данном потоке
+    /* Проверяем режим файла в данном потоке */
     if (opened_files_[f] == Mode::WRITEONLY)
     {
         return nullptr;
     }
+
     /* Пытаемся открыть файл в READONLY-режиме */
-    
     while (true)
     {
         auto file_state = f->ref_count_.load(std::memory_order_acquire);
@@ -112,10 +127,10 @@ size_t MyVFS::Read(File *f, char *buff, size_t len)
     ssize_t read_bytes = ram_cache_.Read(f, buff, len);
     if (read_bytes == -1)
     {
-        // читаем с диска
+        /* читаем с диска */
         auto& manager = *managers_[f->manager_idx_];
         result = manager.Read(f, buff, len);
-        // пишем в кэш
+        /* пишем в кэш, если смогли прочитать все данные */
         if (result == len)
         {
             ram_cache_.Write(f, buff, len);
@@ -130,13 +145,15 @@ size_t MyVFS::Read(File *f, char *buff, size_t len)
 
 size_t MyVFS::Write(File *f, char *buff, size_t len)
 {
-    // пишем на диск
+    /* пишем на диск */
     auto& manager = *managers_[f->manager_idx_];
     auto result = manager.Write(f, buff, len);
     if (result == len)
     {
-        // пишем в кэш, если всё записалось на диск
-        // (гарантируем целостность данных)
+        /*
+            пишем в кэш, если всё записалось на диск
+            (гарантируем целостность данных)
+        */
         ram_cache_.Write(f, buff, len);
     }
     return result;

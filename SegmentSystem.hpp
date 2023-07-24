@@ -9,11 +9,15 @@
 #include <vector>
 
 #include "Journal.hpp"
+#include "VFSfwd.hpp"
 
 namespace TestTask
 {
     struct Segment
     {
+        friend void SerializeSegment(const Segment&, std::ostream&);
+        friend void DeserializeSegments(std::istream&, Segment&);
+
         std::pair<uint64_t, uint64_t> points_;
         std::string data_ = "";
         std::vector<Task*> tasks_ = {};
@@ -35,6 +39,9 @@ namespace TestTask
 
     class SegmentSystem
     {
+        friend void SerializeVFS(const MyVFS&, std::ostream&);
+        friend void DeserializeVFS(std::istream&, MyVFS&);
+
         public:
             void AddSegment(Segment&&);
 
@@ -67,5 +74,5 @@ namespace TestTask
             std::map<uint64_t, std::set<Segment, SegmentComp>> size_mappings_;
             std::map<uint64_t, uint64_t> left_sides_;
             std::map<uint64_t, uint64_t> right_sides_;
-    };   
+    };
 }

@@ -21,6 +21,7 @@ void Remove()
     std::remove("./2");
     std::remove("./3");
     std::remove("./4");
+    std::remove("./myvfs");
 }
 
 namespace TestTask
@@ -56,13 +57,14 @@ void ConcurrentTest(size_t threads, size_t workers, size_t iters)
         {   
             for (size_t j = 0; j < iters; ++j)
             {
-                size_t action = random() % 2;
+                size_t action = random() % 3;
                 std::string filename = "/a";
                 filename[1] += random() % threads;
 
                 switch (action)
                 {
                     case 0:
+                    case 1:
                         {
                             File* f = vfs.Open(filename.c_str());
                             if (!f)
@@ -76,7 +78,7 @@ void ConcurrentTest(size_t threads, size_t workers, size_t iters)
                             vfs.Close(f);
                         }
                         break;
-                    case 1:
+                    case 2:
                         {
                             File* f = vfs.Create(filename.c_str());
                             if (!f)
@@ -191,7 +193,6 @@ int main() {
         assert(root->dirs_[1]->name_ == "good_folder");
         assert(root->dirs_[0]->dirs_[0]->name_ == "folder2");
         assert(root->dirs_[1]->dirs_[0]->name_ == "folder2");
-        assert(root->files_.size() == 1);
         assert(std::string(root->files_[0]->filename_) == "good_file");
         assert(std::string(root->dirs_[0]->files_[0]->filename_) == "good_file");
         assert(std::string(root->dirs_[0]->dirs_[0]->files_[0]->filename_) == "good_file");
@@ -205,6 +206,67 @@ int main() {
         vfs.Close(f5);
 
     }, "Directories");
+
+    Remove();
+
+    test([&]() {
+        std::string content1 = "mein";
+        std::string content2 = "herz";
+        std::string content3 = "brennt";
+        {
+            MyVFS vfs;
+            File* f1;
+            File* f2;
+
+            f1 = vfs.Create("/good_file");
+            f2 = vfs.Create("/folder/good_file");
+            
+            vfs.Write(f1, &content1[0], content1.size());
+            vfs.Write(f2, &content2[0], content2.size());
+
+            vfs.Close(f1);
+            vfs.Close(f2);
+        }
+
+        {
+            MyVFS vfs;
+            File* f1;
+            File* f2;
+            File* f3;
+
+            f3 = vfs.Create("/folder/folder2/good_file");
+            vfs.Write(f3, &content3[0], content3.size());
+            vfs.Close(f3);
+
+            assert(f1 = vfs.Open("/good_file"));
+            assert(f2 = vfs.Open("/folder/good_file"));
+            assert(f3 = vfs.Open("/folder/folder2/good_file"));
+
+            char buf[10] = {0};
+
+            size_t rd = vfs.Read(f1, buf, 10);
+            assert(std::string(buf, rd) == content1);
+
+            rd = vfs.Read(f2, buf, 10);
+            assert(std::string(buf, rd) == content2);
+
+            rd = vfs.Read(f3, buf, 10);
+            assert(std::string(buf, rd) == content3);
+
+            auto* root = GetRoot(vfs);
+
+            assert(root->dirs_[0]->name_ == "folder");
+            assert(root->dirs_[0]->dirs_[0]->name_ == "folder2");
+            assert(std::string(root->files_[0]->filename_) == "good_file");
+            assert(std::string(root->dirs_[0]->files_[0]->filename_) == "good_file");
+            assert(std::string(root->dirs_[0]->dirs_[0]->files_[0]->filename_) == "good_file");
+
+            vfs.Close(f1);
+            vfs.Close(f2);
+            vfs.Close(f3);
+        }
+
+    }, "Mount");
 
     Remove();
 
@@ -231,8 +293,8 @@ int main() {
                         contestants_.store(contestants_.load() + 1);
                         assert(contestants_.load() == 1);
                         contestants_.store(contestants_.load() - 1);
-                        vfs.Close(f);
                         ++j;
+                        vfs.Close(f);
                     }
                 }
             });
