@@ -1,51 +1,50 @@
-# Виртуальная файловая система MyVFS
+# Virtual file system MyVFS
 
-Главным принципом, которым я руководствовался при разработке системы, было максимальное уменьшение числа системных вызовов и обращений к диску.
+The main principle of the system is to decrease the count of system calls and hard drive accesses as much as possible.
 
-Второй принцип - это *end-to-end argument*: в системе практически всё реализовано с нуля, используются очень низкоуровневые примитивы. Причины, по которым это может быть полезно:
+Another principle is *end-to-end argument*: all elements of the system are implemented from scratch with the usage of low-level primitives. Here is why it could be useful:
 
-1. Платформонезависимость - на разных платформах виртуальная FS будет работать одинаково
-2. Прозрачность/редактируемость - виртуальная FS даёт гарантии, на которые можно опираться при написании кода (или наоборот, можно изменить код виртуальной FS, если это потребуется)
-3. Эффективность - платим только за то, что нам действительно нужно, при необходимости можем подстроиться под наши потребности (см. пункт 2)
+1. Platform independency - virtual file system (FS) is independent of certain platform implementations and only bound to C++ standard
+2. Transparency - virtual FS gives us some guarantees, which we can rely on during code writing (or, vice versa, we can change virtual FS code, if necessary)
+3. Efficiency - we pay only for what we need, and we can change the system if necessary (see "Transparency")
 
-Сама система состоит из 2х главных частей - кэш, лежащий в оперативной памяти, и "файловый менеджер" - класс для работы непосредственно с диском
+The system consists of 2 main parts - a RAM cache system and a "file manager", class that directly communicates with a hard drive.
 
 **Cache**
 
-В системе реализован LRU-Cache, находящийся в оперативной памяти, в дополнение к кэшу, который как правило уже реализован в ОС и используется при работе с диском
+There is RAM LRU-Cache in the system, which is an addition to the cache, which is implemented as usual in an OS and used while working with the hard drive.
 
-Кэш конфигурируется: можно поменять максимальный размер кэша, либо изменить "процент очистки кэша" (при достижении максимального размера кэша отдельный поток-воркер будет удалять наиболее устаревшие данные вплоть до момента, когда занято будет не более X% от максимальной ёмкости кэша)
+The cache system is configurable: we can change the cache limit size, or change the "cache clearing percentage" (after reaching the maximum cache size, a separate worker thread will delete old data up to the moment when no more than X% of the cache capacity will be occupied)
 
 **FileManager**
 
-Представляет собой обёртку над отдельным потоком-воркером, который занимается взаимодействием с диском
+FileManager is a superstructure over the worker thread that directly communicates with a hard drive.
 
-Для оптимизации системных вызовов read/write (и, как следствие, обращений к диску) написан класс SegmentSystem - система отрезков, с возможностью добавлять и удалять отрезки. С помощью этого класса:
+For the optimizations of read/write system calls (and therefore hard drive accesses), the SegmentSystem class has been written. This class represents a segment system, with the possibility of addition and deletion of different segments. With this class, we can:
 
-* Отслеживается свободное место в физическом файле, чтобы туда писать файлы в нашей системе (виртуальные файлы)
-* Оптимизируются записи в физический файл путём слияния находящихся рядом сегментов данных. Т.е., если фрагменты двух файлов находятся рядом, то фрагменты для обоих файлов будут записаны за один вызов write / прочитаны за один вызов read. Таким образом, при удачном расположении виртуальных файлов в физическом файле, количество системных вызовов будет продолжать оставаться низким при сколь угодно высокой степени фрагментации файлов
+* Track the free space in the physical file to make virtual file writes in this free space
+* Optimize hard drive accesses with the fusion of the data segments that are located close to each other. I.e., if we try to read file X that occupies a segment with index i<sub>X</sub> and read file Y that occupies i<sub>X+1</sub>, then both reads would happen with the single read access to the hard drive. The same goes for writing. Therefore, if virtual file segments are located "in a suitable manner" in physical files, the system call costs will remain low while the reads/writes are increasing.
 
-Сам FileManager сериализует с помощью lock-free очереди задачи на запись в файлы/чтение из файлов, и исполняет их, работая над прогретым кэшом, по аналогии с примитивом синхронизации strand
+The FileManager is implemented with a lock-free Michael-Scott queue to serialize read/write file tasks and executes these tasks while working on a warm physical cache like the strand synchronization primitive does.
 
 **Concurrency**
 
-Для работы с виртуальной файловой системой реализованы свои примитивы синхронизации:
+There are some synchronization primitives implemented for this virtual FS.
 
-- Read-Write Ticket Lock - тикет-лок, реализующий паттерн читателя и писателя (внутри критической секции может находиться один писатель, либо сколь угодно читателей) Реализован вместо std::shared_mutex по причине "честности" - при обычной загруженности системы гарантируется отсутствие продолжительного голодания (std::shared_mutex не даёт таких гарантий) Используется в VFS для создания новых файлов (запись), или работы с уже имеющимися (чтение), в кэше для работы с закэшированными данными: чтением, либо перезаписью/инвалидацией
+- Read-Write Ticket Lock - ticket lock which implements reader-writer pattern. This is implemented instead of std::shared_mutex for the reason that it gives the FIFO guarantees to guarantee the starvation absence (std::shared_mutex does not give such guarantees, at least open documentation does not state this)
 
-- MSQueue - очередь Майкла-Скотта - lock-free очередь, управление памятью возложено на отдельный класс Journal, внутри которого реализован garbage collection для удаления старых узлов. Используется в FileManager
+- MSQueue, or Michael-Scott queue, the lock-free queue. Memory management is provided with the garbage collection by the separate class "Journal"
 
-**Возможные слабые места**
+**Possible cons**
 
-Наибольшая эффективность системы ожидается, если количество открытых файлов, которое мы можем себе позволить ~ количеству тредов-воркеров, которые мы можем поддерживать в FileManager-ах. Если кол-во открытых файлов >> кол-ва воркеров, то, возможно, будет лучше работать наивная реализация:
+The system is expected to work the most efficiently when the number of available file descriptors =~ worker threads optimal count. If available file descriptors amount >> worker threads optimal count, perhaps the next implementation could be better:
 
-Будем хранить std::shared_mutex (либо RWTicketLock, который у нас есть), брать соответствующую блокировку при чтении/записи из/в файл, и работать с физическим файлом, предварительно закрепив один из физических файлов за виртуальным (по тому же round-robin алгоритму, например) Такая реализация может быть эффективней и по причине того, что убираются почти все накладные расходы на вспомогательные классы
+With the usage of std::shared_mutex, we will pick the correspondent lock during a file write/read, and we will work with a correspondent physical file, after mapping a virtual file to it (for instance, using the same round-robin algorithm) This implementation may be more efficient also because almost no auxiliary classes are required.
 
-**Асинхронность**
+**Async**
 
-Также, данная реализация гораздо эффективнее работает с асинхронными вызовами read/write
+Also, the system works better if we would use async file reads/writes.
 
-**Тестирование**
+**Testing**
 
-Тесты находятся в папке Tests/, из неё можно собрать и запустить все тесты командой `make test`
-
+All tests are located in the Tests/ folder, the system could be built and tested with `make test`
